@@ -6,6 +6,7 @@ mod gui;
 mod util;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::net::Ipv4Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV4;
@@ -112,8 +113,6 @@ fn main() {
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
     let grass_texture = texture_atlas.get("grass").unwrap();
-    let dirt_texture = texture_atlas.get("dirt").unwrap();
-    let stone_texture = texture_atlas.get("cobble").unwrap();
     let player_texture = texture_atlas.get("player").unwrap();
     let model = game::EntityModel::new(
         json::parse(
@@ -137,6 +136,7 @@ fn main() {
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
     let (chunk_builder_output_tx, chunk_builder_output_rx) = std::sync::mpsc::channel();
     let chunk_builder_block_registry = block_registry.clone();
+    let mut entities: HashMap<u32, game::Entity> = HashMap::new();
     std::thread::Builder::new()
         .name("chunk_builder".to_string())
         .stack_size(10000000)
@@ -290,8 +290,7 @@ fn main() {
                     y: _,
                 } => {
                     if mouse_btn == MouseButton::Left {
-                        println!("lclick");
-                        if let Some((position, id, face)) = raycast_result {
+                        if let Some((position, _id, _face)) = raycast_result {
                             socket
                                 .write_message(tungstenite::Message::Binary(
                                     NetworkMessageC2S::LeftClickBlock(
@@ -300,15 +299,10 @@ fn main() {
                                     .to_data(),
                                 ))
                                 .unwrap();
-                            println!(
-                                "position: {} {} {} id: {id} face: {face:#?}",
-                                position.x, position.y, position.z
-                            );
                         }
                     }
                     if mouse_btn == MouseButton::Right {
-                        println!("rclick");
-                        if let Some((position, id, face)) = raycast_result {
+                        if let Some((position, _id, face)) = raycast_result {
                             socket
                                 .write_message(tungstenite::Message::Binary(
                                     NetworkMessageC2S::RightClickBlock(
@@ -321,10 +315,6 @@ fn main() {
                                     .to_data(),
                                 ))
                                 .unwrap();
-                            println!(
-                                "position: {} {} {} id: {id} face: {face:#?}",
-                                position.x, position.y, position.z
-                            );
                         }
                     }
                 }
@@ -384,8 +374,8 @@ fn main() {
 
             'message_loop: loop {
                 match socket.read_message() {
-                    Ok(msg) => {
-                        if let tungstenite::Message::Binary(msg) = msg {
+                    Ok(msg) => match msg {
+                        tungstenite::Message::Binary(msg) => {
                             let msg = msg.as_slice();
                             let message = NetworkMessageS2C::from_data(msg).unwrap();
                             match message {
@@ -394,7 +384,6 @@ fn main() {
                                     world.set_block(position, id).expect(
                                         format!("chunk not loaded at {x} {y} {z}").as_str(),
                                     );
-                                    println!("setblock x: {x}, y: {y}, z: {z}, type: {id}");
                                 }
                                 NetworkMessageS2C::LoadChunk(x, y, z, blocks) => {
                                     world.load_chunk(ChunkPosition { x, y, z });
@@ -405,19 +394,35 @@ fn main() {
                                 NetworkMessageS2C::UnloadChunk(x, y, z) => {
                                     world.unload_chunk(ChunkPosition { x, y, z });
                                 }
-                                NetworkMessageS2C::AddEntity(entity_type, id, x, y, z) => {
-                                    println!(
-                                        "add type: {entity_type} id: {id} x: {x} y: {y} z: {z}"
+                                NetworkMessageS2C::AddEntity(
+                                    entity_type,
+                                    id,
+                                    x,
+                                    y,
+                                    z,
+                                    rotation,
+                                ) => {
+                                    entities.insert(
+                                        id,
+                                        game::Entity {
+                                            entity_type,
+                                            rotation,
+                                            position: Position { x, y, z },
+                                        },
                                     );
                                 }
-                                NetworkMessageS2C::MoveEntity(id, x, y, z) => {
-                                    println!("move id: {id} x: {x} y: {y} z: {z}");
+                                NetworkMessageS2C::MoveEntity(id, x, y, z, rotation) => {
+                                    if let Some(entity) = entities.get_mut(&id) {
+                                        entity.position.x = x;
+                                        entity.position.y = y;
+                                        entity.position.z = z;
+                                        entity.rotation = rotation;
+                                    }
                                 }
                                 NetworkMessageS2C::DeleteEntity(id) => {
-                                    println!("remove id: {id}");
+                                    entities.remove(&id);
                                 }
-                                NetworkMessageS2C::InitializeBlocks(blocks) => {
-                                    println!("registry init");
+                                NetworkMessageS2C::InitializeContent(blocks, entities) => {
                                     let mut guard = block_registry.lock().unwrap();
                                     let block_registry_blocks = &mut guard.blocks;
                                     for block in &blocks {
@@ -443,13 +448,16 @@ fn main() {
                                             ),
                                         });
                                     }
-                                    println!("registry loaded, size {}", blocks.len());
                                 }
                             }
                         }
-                    }
+                        tungstenite::Message::Close(_) => {
+                            panic!("connection closed");
+                        }
+                        _ => {}
+                    },
                     Err(err) => match err {
-                        tungstenite::Error::ConnectionClosed => panic!("connection closed"),
+                        tungstenite::Error::AlreadyClosed => panic!("connection closed"),
                         _ => {
                             break 'message_loop;
                         }
@@ -462,10 +470,7 @@ fn main() {
                 .set_title(
                     format!(
                         "BlockByte {} {} {} {}",
-                        camera.get_eye().x,
-                        camera.get_eye().y,
-                        camera.get_eye().z,
-                        last_frame_time
+                        camera.position.x, camera.position.y, camera.position.z, last_frame_time
                     )
                     .as_str(),
                 )
@@ -477,6 +482,7 @@ fn main() {
                         camera.position.y,
                         camera.position.z,
                         camera.is_shifting(),
+                        camera.pitch_deg,
                     )
                     .to_data(),
                 ))
@@ -512,14 +518,13 @@ fn main() {
                     1000.,
                 ) * camera.create_view_matrix(),
             );
-            model.render(
-                Position {
-                    x: 0.,
-                    y: 2.,
-                    z: 0.,
-                },
-                &model_shader,
-            );
+            for entity in &entities {
+                model.render(
+                    entity.1.position,
+                    entity.1.rotation.to_radians(),
+                    &model_shader,
+                );
+            }
 
             outline_shader.use_program();
             let projection_view_loc = outline_shader
@@ -542,11 +547,11 @@ fn main() {
 
             gui_renderer.render(
                 &gui_shader,
-                vec![GUIQuad::new(0., 0., 0.5, 0.5, &grass_texture)],
+                vec![GUIQuad::new(-0.05, -0.05, 0.05, 0.05, &grass_texture)],
             );
+            window.gl_swap_window();
             last_frame_time =
                 (1000000f64 / (render_start_time.elapsed().as_micros() as f64)) as u32 as f32;
-            window.gl_swap_window();
         }
     }
 }

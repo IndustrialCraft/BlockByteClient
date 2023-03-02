@@ -15,15 +15,19 @@ pub struct BlockRenderData {
     pub left: String,
     pub right: String,
 }
+pub struct EntityRenderData {
+    pub model: String,
+    pub texture: String,
+}
 #[repr(u8)]
 pub enum NetworkMessageS2C {
     SetBlock(i32, i32, i32, u32) = 0,
     LoadChunk(i32, i32, i32, Vec<u8>) = 1,
     UnloadChunk(i32, i32, i32) = 2,
-    AddEntity(u32, u32, f32, f32, f32) = 3,
-    MoveEntity(u32, f32, f32, f32) = 4,
+    AddEntity(u32, u32, f32, f32, f32, f32) = 3,
+    MoveEntity(u32, f32, f32, f32, f32) = 4,
     DeleteEntity(u32) = 5,
-    InitializeBlocks(Vec<BlockRenderData>),
+    InitializeContent(Vec<BlockRenderData>, Vec<EntityRenderData>),
 }
 fn write_string(data: &mut Vec<u8>, value: String) {
     data.write_be(value.len() as u16).unwrap();
@@ -39,7 +43,6 @@ fn read_string(data: &mut &[u8]) -> String {
         str.push(ch);
     }
     let str = String::from_utf8(str).unwrap();
-    println!("read: {}", str);
     str
 }
 impl NetworkMessageS2C {
@@ -76,8 +79,10 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
+                data.read_be().unwrap(),
             )),
             4 => Some(NetworkMessageS2C::MoveEntity(
+                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
@@ -86,6 +91,7 @@ impl NetworkMessageS2C {
             5 => Some(NetworkMessageS2C::DeleteEntity(data.read_be().unwrap())),
             6 => {
                 let mut blocks = Vec::new();
+                let mut entities = Vec::new();
                 let size: u16 = data.read_be().unwrap();
                 for _ in 0..size {
                     let north = read_string(&mut data);
@@ -103,7 +109,13 @@ impl NetworkMessageS2C {
                         right,
                     });
                 }
-                Some(NetworkMessageS2C::InitializeBlocks(blocks))
+                let size: u16 = data.read_be().unwrap();
+                for _ in 0..size {
+                    let model = read_string(&mut data);
+                    let texture = read_string(&mut data);
+                    entities.push(EntityRenderData { model, texture });
+                }
+                Some(NetworkMessageS2C::InitializeContent(blocks, entities))
             }
             _ => None,
         }
@@ -112,7 +124,7 @@ impl NetworkMessageS2C {
 pub enum NetworkMessageC2S {
     LeftClickBlock(i32, i32, i32),
     RightClickBlock(i32, i32, i32, Face, bool),
-    PlayerPosition(f32, f32, f32, bool),
+    PlayerPosition(f32, f32, f32, bool, f32),
 }
 impl NetworkMessageC2S {
     pub fn to_data(&self) -> Vec<u8> {
@@ -132,12 +144,13 @@ impl NetworkMessageC2S {
                 data.write_be(face.to_owned() as u8).unwrap();
                 data.write_be(shifting.to_owned()).unwrap();
             }
-            Self::PlayerPosition(x, y, z, shifting) => {
+            Self::PlayerPosition(x, y, z, shifting, rotation) => {
                 data.write_be(2u8).unwrap();
                 data.write_be(x.to_owned()).unwrap();
                 data.write_be(y.to_owned()).unwrap();
                 data.write_be(z.to_owned()).unwrap();
                 data.write_be(shifting.to_owned()).unwrap();
+                data.write_be(rotation.to_owned()).unwrap();
             }
         };
         data

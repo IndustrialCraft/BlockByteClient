@@ -13,7 +13,7 @@ use crate::glwrappers::{self, ColorVertex, ModelVertex};
 pub struct ClientPlayer {
     pub position: Vec3,
     velocity: Vec3,
-    pitch_deg: f32,
+    pub pitch_deg: f32,
     yaw_deg: f32,
     can_jump: bool,
     shifting: bool,
@@ -24,7 +24,7 @@ impl ClientPlayer {
         y: 1.0,
         z: 0.0,
     };
-    pub fn is_shifting(&self) -> bool{
+    pub fn is_shifting(&self) -> bool {
         self.shifting
     }
     pub fn make_front(&self) -> Vec3 {
@@ -533,16 +533,9 @@ impl<'a> World<'a> {
     }
 }
 pub struct Entity {
-    entity_type: u32,
-    position: Position,
-}
-impl Entity {
-    pub fn new(entity_type: u32, position: Position) -> Self {
-        Entity {
-            entity_type,
-            position,
-        }
-    }
+    pub entity_type: u32,
+    pub position: Position,
+    pub rotation: f32,
 }
 
 pub struct EntityModel {
@@ -651,16 +644,11 @@ impl EntityModel {
         }
         let mut vertices: Vec<ModelVertex> = Vec::new();
         let (bones, bones_render_data) = ModelBone::load(&json["outliner"]);
-        let mut i = 0;
         for element in json["elements"].members() {
             assert_eq!(element["type"], "cube");
             let uuid = Uuid::try_parse(element["uuid"].as_str().unwrap()).unwrap();
             let from = EntityModel::parse_array_into_position(&element["from"]);
             let to = EntityModel::parse_array_into_position(&element["to"]);
-            println!(
-                "element from: {} {} {} to: {} {} {}",
-                from.x, from.y, from.z, to.x, to.y, to.z,
-            );
             let faces = &element["faces"];
             EntityModel::create_cube(
                 &mut vertices,
@@ -674,7 +662,6 @@ impl EntityModel {
                 EntityModel::parse_uv(&faces["east"], texture_atlas),
                 bones[&bones_render_data[&uuid]].get_render_id(),
             );
-            i += 1;
         }
         vbo.upload_data(
             bytemuck::cast_slice(vertices.as_slice()),
@@ -687,7 +674,7 @@ impl EntityModel {
             bones,
         }
     }
-    pub fn render(&self, position: Position, shader: &glwrappers::Shader) {
+    pub fn render(&self, position: Position, rotation: f32, shader: &glwrappers::Shader) {
         self.vao.bind();
         self.vbo.bind();
         shader.set_uniform_matrix(
@@ -698,7 +685,7 @@ impl EntityModel {
                 x: position.x,
                 y: position.y,
                 z: position.z,
-            }),
+            }) * ultraviolet::Mat4::from_rotation_y(rotation),
         );
         let mut bone_matrices = Vec::new();
         let mut i = 0;
@@ -745,6 +732,16 @@ impl EntityModel {
         east: (f32, f32, f32, f32),
         bone_id: u16,
     ) {
+        let from = Position {
+            x: from.x / 16.,
+            y: from.y / 16.,
+            z: from.z / 16.,
+        };
+        let to = Position {
+            x: to.x / 16.,
+            y: to.y / 16.,
+            z: to.z / 16.,
+        };
         let size = Position {
             x: to.x - from.x,
             y: to.y - from.y,
