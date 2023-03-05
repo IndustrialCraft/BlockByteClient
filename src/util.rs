@@ -19,6 +19,10 @@ pub struct EntityRenderData {
     pub model: String,
     pub texture: String,
 }
+pub struct ItemRenderData {
+    pub name: String,
+    pub texture: String,
+}
 #[repr(u8)]
 pub enum NetworkMessageS2C {
     SetBlock(i32, i32, i32, u32) = 0,
@@ -27,7 +31,12 @@ pub enum NetworkMessageS2C {
     AddEntity(u32, u32, f32, f32, f32, f32) = 3,
     MoveEntity(u32, f32, f32, f32, f32) = 4,
     DeleteEntity(u32) = 5,
-    InitializeContent(Vec<BlockRenderData>, Vec<EntityRenderData>),
+    InitializeContent(
+        Vec<BlockRenderData>,
+        Vec<EntityRenderData>,
+        Vec<ItemRenderData>,
+    ) = 6,
+    GuiData(json::JsonValue) = 7,
 }
 fn write_string(data: &mut Vec<u8>, value: String) {
     data.write_be(value.len() as u16).unwrap();
@@ -92,6 +101,7 @@ impl NetworkMessageS2C {
             6 => {
                 let mut blocks = Vec::new();
                 let mut entities = Vec::new();
+                let mut items = Vec::new();
                 let size: u16 = data.read_be().unwrap();
                 for _ in 0..size {
                     let north = read_string(&mut data);
@@ -115,8 +125,19 @@ impl NetworkMessageS2C {
                     let texture = read_string(&mut data);
                     entities.push(EntityRenderData { model, texture });
                 }
-                Some(NetworkMessageS2C::InitializeContent(blocks, entities))
+                let size: u16 = data.read_be().unwrap();
+                for _ in 0..size {
+                    let name = read_string(&mut data);
+                    let texture = read_string(&mut data);
+                    items.push(ItemRenderData { name, texture });
+                }
+                Some(NetworkMessageS2C::InitializeContent(
+                    blocks, entities, items,
+                ))
             }
+            7 => Some(NetworkMessageS2C::GuiData(
+                json::parse(read_string(&mut data).as_str()).unwrap(),
+            )),
             _ => None,
         }
     }

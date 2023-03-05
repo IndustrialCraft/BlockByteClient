@@ -23,7 +23,7 @@ unsafe impl bytemuck::Pod for Vertex {}
 unsafe impl bytemuck::Zeroable for ModelVertex {}
 unsafe impl bytemuck::Pod for ModelVertex {}
 pub type ColorVertex = [f32; 3 + 3];
-pub type GuiVertex = [f32; 2 + 2];
+pub type GuiVertex = [f32; 2 + 2 + 4];
 
 pub struct Shader {
     shader_program: u32,

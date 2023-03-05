@@ -16,6 +16,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use game::BlockRegistry;
+use gui::Color;
 use gui::GUIQuad;
 use image::EncodableLayout;
 use image::RgbaImage;
@@ -101,6 +102,7 @@ fn main() {
         ("grass_side", std::path::Path::new("grass_side.png")),
         ("cobble", std::path::Path::new("cobble.png")),
         ("player", std::path::Path::new("player.png")),
+        ("font", std::path::Path::new("font.png")),
     ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),
@@ -127,11 +129,18 @@ fn main() {
         Arc::new(Mutex::new(game::BlockRegistry {
             blocks: vec![game::Block::new_air()],
         }));
+    let item_registry = Rc::new(RefCell::new(Vec::new()));
     let outline_renderer = BlockOutline::new();
     let mut world = game::World::new(&block_registry);
     let mut event_pump = sdl.event_pump().unwrap();
     let timer = sdl.timer().unwrap();
-    let mut gui_renderer = gui::GUIRenderer::new();
+    let mut gui = gui::GUI::new(
+        gui::TextRenderer {
+            texture: texture_atlas.get("font").unwrap().clone(),
+        },
+        item_registry.clone(),
+        texture_atlas.clone(),
+    );
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
     let (chunk_builder_output_tx, chunk_builder_output_rx) = std::sync::mpsc::channel();
@@ -422,7 +431,7 @@ fn main() {
                                 NetworkMessageS2C::DeleteEntity(id) => {
                                     entities.remove(&id);
                                 }
-                                NetworkMessageS2C::InitializeContent(blocks, entities) => {
+                                NetworkMessageS2C::InitializeContent(blocks, entities, items) => {
                                     let mut guard = block_registry.lock().unwrap();
                                     let block_registry_blocks = &mut guard.blocks;
                                     for block in &blocks {
@@ -448,6 +457,13 @@ fn main() {
                                             ),
                                         });
                                     }
+                                    let mut item_registry = item_registry.borrow_mut();
+                                    for item in items {
+                                        item_registry.push(item);
+                                    }
+                                }
+                                NetworkMessageS2C::GuiData(data) => {
+                                    gui.on_json_data(data);
                                 }
                             }
                         }
@@ -545,10 +561,7 @@ fn main() {
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
 
-            gui_renderer.render(
-                &gui_shader,
-                vec![GUIQuad::new(-0.05, -0.05, 0.05, 0.05, &grass_texture)],
-            );
+            gui.render(&gui_shader);
             window.gl_swap_window();
             last_frame_time =
                 (1000000f64 / (render_start_time.elapsed().as_micros() as f64)) as u32 as f32;

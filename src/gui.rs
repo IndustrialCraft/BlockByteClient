@@ -1,4 +1,12 @@
-use crate::{game::AtlassedTexture, glwrappers};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
+
+use json::JsonValue;
+
+use crate::{
+    game::{self, AtlassedTexture},
+    glwrappers,
+    util::ItemRenderData,
+};
 
 pub struct GUIRenderer {
     vao: glwrappers::VertexArray,
@@ -32,6 +40,17 @@ impl GUIRenderer {
                     .unwrap(),
                 std::mem::size_of::<[f32; 2]>() as *const _,
             );
+            ogl33::glVertexAttribPointer(
+                2,
+                4,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::GuiVertex>()
+                    .try_into()
+                    .unwrap(),
+                std::mem::size_of::<[f32; 2 + 2]>() as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(2);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
         }
@@ -49,21 +68,78 @@ impl GUIRenderer {
         );*/
         let mut vertices: Vec<glwrappers::GuiVertex> = Vec::new();
         for quad in &quads {
-            vertices.push([quad.x, quad.y, quad.u1, quad.v1]);
-            vertices.push([quad.x + quad.w, quad.y, quad.u2, quad.v1]);
-            vertices.push([quad.x + quad.w, quad.y + quad.h, quad.u2, quad.v2]);
-            vertices.push([quad.x + quad.w, quad.y + quad.h, quad.u2, quad.v2]);
-            vertices.push([quad.x, quad.y + quad.h, quad.u1, quad.v2]);
-            vertices.push([quad.x, quad.y, quad.u1, quad.v1]);
+            vertices.push([
+                quad.x,
+                quad.y,
+                quad.u1,
+                quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x + quad.w,
+                quad.y,
+                quad.u2,
+                quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x + quad.w,
+                quad.y + quad.h,
+                quad.u2,
+                quad.v2,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x + quad.w,
+                quad.y + quad.h,
+                quad.u2,
+                quad.v2,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x,
+                quad.y + quad.h,
+                quad.u1,
+                quad.v2,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x,
+                quad.y,
+                quad.u1,
+                quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
         }
         self.vbo.upload_data(
             bytemuck::cast_slice(vertices.as_slice()),
             ogl33::GL_STREAM_DRAW,
         );
         unsafe {
+            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+            ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDisable(ogl33::GL_DEPTH_TEST);
             ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, (quads.len() * 6) as i32);
             ogl33::glEnable(ogl33::GL_DEPTH_TEST);
+            ogl33::glDisable(ogl33::GL_BLEND);
         }
     }
 }
@@ -76,9 +152,10 @@ pub struct GUIQuad {
     v1: f32,
     u2: f32,
     v2: f32,
+    color: Color,
 }
 impl GUIQuad {
-    pub fn new(x: f32, y: f32, w: f32, h: f32, texture: &AtlassedTexture) -> GUIQuad {
+    pub fn new(x: f32, y: f32, w: f32, h: f32, texture: &AtlassedTexture, color: Color) -> GUIQuad {
         let uv = texture.get_coords();
         GUIQuad {
             x,
@@ -89,38 +166,167 @@ impl GUIQuad {
             v1: uv.1,
             u2: uv.2,
             v2: uv.3,
+            color,
         }
     }
 }
 
 pub enum GUIComponent {
-    ImageComponent(f32, f32, f32, f32, AtlassedTexture),
+    ImageComponent(f32, f32, f32, f32, AtlassedTexture, Color),
+    TextComponent(f32, f32, f32, String, Color),
 }
 impl GUIComponent {
-    pub fn add_quads(&self, quads: &mut Vec<GUIQuad>) {
+    pub fn add_quads(&self, quads: &mut Vec<GUIQuad>, text_renderer: &TextRenderer) {
         match self {
-            Self::ImageComponent(x, y, w, h, texture) => {
-                quads.push(GUIQuad::new(*x, *y, *w, *h, &texture));
+            Self::ImageComponent(x, y, w, h, texture, color) => {
+                quads.push(GUIQuad::new(*x, *y, *w, *h, &texture, *color));
+            }
+            Self::TextComponent(x, y, scale, text, color) => {
+                let mut i = 0;
+                for ch in text.bytes() {
+                    {
+                        let i = i as f32;
+                        let coords = text_renderer.resolve_char(ch);
+                        let width = 0.05f32 * scale;
+                        let kerning = 0.01f32 * scale;
+                        let height = 0.07f32 * scale;
+                        quads.push(GUIQuad {
+                            x: x + (i * (width + kerning)),
+                            y: *y,
+                            w: width,
+                            h: height,
+                            u1: coords.0,
+                            v2: coords.1,
+                            u2: coords.2,
+                            v1: coords.3,
+                            color: *color,
+                        });
+                    }
+                    i += 1;
+                }
             }
         }
     }
 }
-struct GUI {
-    components: Vec<GUIComponent>,
+pub struct GUI {
     cursor: (f32, f32),
+    renderer: GUIRenderer,
+    font_renderer: TextRenderer,
+    item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
+    slots: Vec<Option<ItemSlot>>,
+    texture_atlas: HashMap<String, AtlassedTexture>,
 }
 impl GUI {
-    pub fn new() -> Self {
+    pub fn new(
+        text_renderer: TextRenderer,
+        item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
+        texture_atlas: HashMap<String, AtlassedTexture>,
+    ) -> Self {
         Self {
-            components: Vec::new(),
             cursor: (0., 0.),
+            renderer: GUIRenderer::new(),
+            font_renderer: text_renderer,
+            item_renderer,
+            slots: vec![None; 9],
+            texture_atlas,
         }
     }
-    pub fn to_quad_list(&self) -> Vec<GUIQuad> {
+    pub fn on_json_data(&mut self, data: JsonValue) {
+        match data["type"].as_str().unwrap() {
+            "setItem" => {
+                let slot = data["slot"].as_u32().unwrap();
+                let item = data["item"].as_u32().unwrap();
+                let count = data["count"].as_u16().unwrap();
+                self.slots[slot as usize] = Some(ItemSlot { item, count });
+            }
+            "removeItem" => {
+                let slot = data["slot"].as_u32().unwrap();
+                self.slots[slot as usize] = None;
+            }
+            _ => {}
+        }
+    }
+    fn to_quad_list(&self) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
-        for component in &self.components {
-            component.add_quads(&mut quads);
+        for i in 0..9 {
+            if let Some(slot) = self.slots.get(i).unwrap() {
+                GUIComponent::ImageComponent(
+                    ((i as f32) * 0.1) - 0.7,
+                    -0.5,
+                    0.1,
+                    0.1,
+                    self.texture_atlas
+                        .get(
+                            &self
+                                .item_renderer
+                                .borrow()
+                                .get(slot.item as usize)
+                                .unwrap()
+                                .texture,
+                        )
+                        .unwrap()
+                        .clone(),
+                    Color {
+                        r: 1.,
+                        g: 1.,
+                        b: 1.,
+                        a: 1.,
+                    },
+                )
+                .add_quads(&mut quads, &self.font_renderer);
+                if slot.count > 1 {
+                    GUIComponent::TextComponent(
+                        ((i as f32) * 0.1) - 0.7,
+                        -0.6,
+                        1.,
+                        slot.count.to_string(),
+                        Color {
+                            r: 1.,
+                            g: 1.,
+                            b: 1.,
+                            a: 1.,
+                        },
+                    )
+                    .add_quads(&mut quads, &self.font_renderer);
+                }
+            }
         }
         quads
     }
+    pub fn render(&mut self, shader: &glwrappers::Shader) {
+        self.renderer.render(shader, self.to_quad_list());
+    }
+}
+pub struct TextRenderer {
+    pub texture: game::AtlassedTexture,
+}
+impl TextRenderer {
+    pub fn resolve_char(&self, ch: u8) -> (f32, f32, f32, f32) {
+        let ch = ch.to_ascii_uppercase();
+        let index = if ch.is_ascii_uppercase() {
+            ch - ('A' as u8)
+        } else if ch.is_ascii_digit() {
+            ch - ('0' as u8) + 27
+        } else {
+            26
+        };
+        let index = index as f32;
+        let uv1 = self.texture.map((index * 5f32, 0f32));
+        let uv2 = self.texture.map(((index + 1f32) * 5f32, 7f32));
+        (uv1.0, uv1.1, uv2.0, uv2.1)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct Color {
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
+    pub a: f32,
+}
+
+#[derive(Clone, Copy)]
+struct ItemSlot {
+    item: u32,
+    count: u16,
 }
