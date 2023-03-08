@@ -107,6 +107,7 @@ fn main() {
         ("player", std::path::Path::new("player.png")),
         ("font", std::path::Path::new("font.png")),
         ("slot", std::path::Path::new("slot.png")),
+        ("cursor", std::path::Path::new("cursor.png")),
     ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),

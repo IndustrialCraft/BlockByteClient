@@ -258,6 +258,20 @@ impl GUI {
     }
     fn to_quad_list(&self) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
+        GUIComponent::ImageComponent(
+            -0.05,
+            -0.05,
+            0.1,
+            0.1,
+            self.texture_atlas.get("cursor").unwrap().clone(),
+            Color {
+                r: 1.,
+                g: 1.,
+                b: 1.,
+                a: 1.,
+            },
+        )
+        .add_quads(&mut quads, &self.font_renderer);
         for i in 0..9 {
             let x = ((i as f32) * 0.13) - 0.7;
             let y = -0.5;
