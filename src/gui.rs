@@ -182,27 +182,32 @@ impl GUIComponent {
                 quads.push(GUIQuad::new(*x, *y, *w, *h, &texture, *color));
             }
             Self::TextComponent(x, y, scale, text, color) => {
-                let mut i = 0;
-                for ch in text.bytes() {
-                    {
-                        let i = i as f32;
-                        let coords = text_renderer.resolve_char(ch);
-                        let width = 0.05f32 * scale;
-                        let kerning = 0.01f32 * scale;
-                        let height = 0.07f32 * scale;
-                        quads.push(GUIQuad {
-                            x: x + (i * (width + kerning)),
-                            y: *y,
-                            w: width,
-                            h: height,
-                            u1: coords.0,
-                            v2: coords.1,
-                            u2: coords.2,
-                            v1: coords.3,
-                            color: *color,
-                        });
+                let mut y_cnt = 1;
+                for text in text.split('\n') {
+                    let mut x_cnt = 0;
+                    for ch in text.bytes() {
+                        if ch != (' ' as u8) {
+                            let i = x_cnt as f32;
+                            let coords = text_renderer.resolve_char(ch);
+                            let width = 0.05f32 * scale;
+                            let kerning = 0.01f32 * scale;
+                            let line_separation = 0.01f32 * scale;
+                            let height = 0.07f32 * scale;
+                            quads.push(GUIQuad {
+                                x: x + (i * (width + kerning)),
+                                y: *y - ((y_cnt as f32) * (height + line_separation)),
+                                w: width,
+                                h: height,
+                                u1: coords.0,
+                                v2: coords.1,
+                                u2: coords.2,
+                                v1: coords.3,
+                                color: *color,
+                            });
+                        }
+                        x_cnt += 1;
                     }
-                    i += 1;
+                    y_cnt += 1;
                 }
             }
         }
@@ -215,6 +220,7 @@ pub struct GUI {
     item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: HashMap<String, AtlassedTexture>,
+    pub selected_slot: u8,
 }
 impl GUI {
     pub fn new(
@@ -229,6 +235,7 @@ impl GUI {
             item_renderer,
             slots: vec![None; 9],
             texture_atlas,
+            selected_slot: 0,
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -243,16 +250,44 @@ impl GUI {
                 let slot = data["slot"].as_u32().unwrap();
                 self.slots[slot as usize] = None;
             }
+            "selectSlot" => {
+                self.selected_slot = data["slot"].as_u8().unwrap();
+            }
             _ => {}
         }
     }
     fn to_quad_list(&self) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
         for i in 0..9 {
+            let x = ((i as f32) * 0.13) - 0.7;
+            let y = -0.5;
+            GUIComponent::ImageComponent(
+                x - 0.01,
+                y - 0.01,
+                0.12,
+                0.12,
+                self.texture_atlas.get("slot").unwrap().clone(),
+                if self.selected_slot == (i as u8) {
+                    Color {
+                        r: 1.,
+                        g: 0.,
+                        b: 0.,
+                        a: 1.,
+                    }
+                } else {
+                    Color {
+                        r: 1.,
+                        g: 1.,
+                        b: 1.,
+                        a: 1.,
+                    }
+                },
+            )
+            .add_quads(&mut quads, &self.font_renderer);
             if let Some(slot) = self.slots.get(i).unwrap() {
                 GUIComponent::ImageComponent(
-                    ((i as f32) * 0.1) - 0.7,
-                    -0.5,
+                    x,
+                    y,
                     0.1,
                     0.1,
                     self.texture_atlas
@@ -276,9 +311,9 @@ impl GUI {
                 .add_quads(&mut quads, &self.font_renderer);
                 if slot.count > 1 {
                     GUIComponent::TextComponent(
-                        ((i as f32) * 0.1) - 0.7,
-                        -0.6,
-                        1.,
+                        x + 0.04,
+                        y + 0.01,
+                        0.5,
                         slot.count.to_string(),
                         Color {
                             r: 1.,

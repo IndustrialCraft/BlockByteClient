@@ -103,6 +103,7 @@ fn main() {
         ("cobble", std::path::Path::new("cobble.png")),
         ("player", std::path::Path::new("player.png")),
         ("font", std::path::Path::new("font.png")),
+        ("slot", std::path::Path::new("slot.png")),
     ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),
@@ -273,6 +274,27 @@ fn main() {
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { timestamp: _ } => break 'main_loop,
+                Event::MouseWheel {
+                    timestamp: _,
+                    window_id: _,
+                    which: _,
+                    x: _,
+                    y,
+                    direction: _,
+                } => {
+                    let mut current_slot = (gui.selected_slot as i32) - y;
+                    if current_slot < 0 {
+                        current_slot = 8;
+                    }
+                    if current_slot > 8 {
+                        current_slot = 0;
+                    }
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            util::NetworkMessageC2S::SelectSlot(current_slot as u8).to_data(),
+                        ))
+                        .unwrap();
+                }
                 Event::MouseMotion {
                     timestamp: _,
                     window_id: _,
@@ -339,6 +361,15 @@ fn main() {
                         break 'main_loop;
                     }
                     keys_held.insert(keycode.unwrap());
+                    let keycode_num = keycode.unwrap() as i32;
+                    if keycode_num >= 49 && keycode_num <= 57 {
+                        socket
+                            .write_message(tungstenite::Message::Binary(
+                                util::NetworkMessageC2S::SelectSlot((keycode_num as u8) - 49u8)
+                                    .to_data(),
+                            ))
+                            .unwrap();
+                    }
                 }
                 Event::KeyUp {
                     timestamp: _,

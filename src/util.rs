@@ -146,6 +146,7 @@ pub enum NetworkMessageC2S {
     LeftClickBlock(i32, i32, i32),
     RightClickBlock(i32, i32, i32, Face, bool),
     PlayerPosition(f32, f32, f32, bool, f32),
+    SelectSlot(u8),
 }
 impl NetworkMessageC2S {
     pub fn to_data(&self) -> Vec<u8> {
@@ -172,6 +173,10 @@ impl NetworkMessageC2S {
                 data.write_be(z.to_owned()).unwrap();
                 data.write_be(shifting.to_owned()).unwrap();
                 data.write_be(rotation.to_owned()).unwrap();
+            }
+            Self::SelectSlot(slot) => {
+                data.write_be(3u8).unwrap();
+                data.write_be(*slot).unwrap();
             }
         };
         data
