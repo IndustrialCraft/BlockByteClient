@@ -5,15 +5,11 @@ use endio::LEWrite;
 use endio::Serialize;
 use enum_iterator::Sequence;
 
+use json::JsonValue;
 use ultraviolet::*;
 
 pub struct BlockRenderData {
-    pub north: String,
-    pub south: String,
-    pub up: String,
-    pub down: String,
-    pub left: String,
-    pub right: String,
+    pub json: JsonValue,
 }
 pub struct EntityRenderData {
     pub model: String,
@@ -104,19 +100,9 @@ impl NetworkMessageS2C {
                 let mut items = Vec::new();
                 let size: u16 = data.read_be().unwrap();
                 for _ in 0..size {
-                    let north = read_string(&mut data);
-                    let south = read_string(&mut data);
-                    let up = read_string(&mut data);
-                    let down = read_string(&mut data);
-                    let left = read_string(&mut data);
-                    let right = read_string(&mut data);
+                    let json = read_string(&mut data);
                     blocks.push(BlockRenderData {
-                        north,
-                        south,
-                        up,
-                        down,
-                        left,
-                        right,
+                        json: json::parse(json.as_str()).unwrap(),
                     });
                 }
                 let size: u16 = data.read_be().unwrap();

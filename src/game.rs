@@ -1,7 +1,11 @@
 use std::{cell::RefCell, collections::HashMap, ops::AddAssign, sync::Mutex};
 
-use crate::util::{self, *};
+use crate::{
+    glwrappers::Vertex,
+    util::{self, *},
+};
 use enum_iterator::Sequence;
+use json::JsonValue;
 use ogl33::GL_FALSE;
 use sdl2::keyboard::Keycode;
 use ultraviolet::*;
@@ -291,81 +295,102 @@ impl<'a> Chunk<'a> {
                         y: by,
                         z: bz,
                     };
-                    for face in [
-                        Face::Front,
-                        Face::Back,
-                        Face::Up,
-                        Face::Down,
-                        Face::Left,
-                        Face::Right,
-                    ] {
-                        let face_offset = face.get_offset();
-                        let neighbor_pos = position + face_offset;
-                        let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
-                            block_registry
-                                .get_block(
-                                    self.blocks[neighbor_pos.x as usize][neighbor_pos.y as usize]
-                                        [neighbor_pos.z as usize],
-                                )
-                                .get_texture(&face.opposite())
-                                .is_some()
-                        } else {
-                            false
-                        };
-                        let face_texture = block.get_texture(&face);
-                        if let Some(texture) = face_texture {
-                            if !neighbor_side_full {
-                                let face_vertices = face.get_vertices();
-                                let uv = texture.get_coords();
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[0].x + x,
-                                    y: face_vertices[0].y + y,
-                                    z: face_vertices[0].z + z,
-                                    u: uv.0,
-                                    v: uv.1,
-                                    render_data: block.render_data,
-                                });
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[1].x + x,
-                                    y: face_vertices[1].y + y,
-                                    z: face_vertices[1].z + z,
-                                    u: uv.2,
-                                    v: uv.1,
-                                    render_data: block.render_data,
-                                });
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[2].x + x,
-                                    y: face_vertices[2].y + y,
-                                    z: face_vertices[2].z + z,
-                                    u: uv.2,
-                                    v: uv.3,
-                                    render_data: block.render_data,
-                                });
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[2].x + x,
-                                    y: face_vertices[2].y + y,
-                                    z: face_vertices[2].z + z,
-                                    u: uv.2,
-                                    v: uv.3,
-                                    render_data: block.render_data,
-                                });
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[3].x + x,
-                                    y: face_vertices[3].y + y,
-                                    z: face_vertices[3].z + z,
-                                    u: uv.0,
-                                    v: uv.3,
-                                    render_data: block.render_data,
-                                });
-                                vertices.push(glwrappers::Vertex {
-                                    x: face_vertices[0].x + x,
-                                    y: face_vertices[0].y + y,
-                                    z: face_vertices[0].z + z,
-                                    u: uv.0,
-                                    v: uv.1,
-                                    render_data: block.render_data,
-                                });
+                    match &block.render_type {
+                        BlockRenderType::Air => {}
+                        BlockRenderType::Cube(north, south, right, left, up, down) => {
+                            for face in [
+                                Face::Front,
+                                Face::Back,
+                                Face::Up,
+                                Face::Down,
+                                Face::Left,
+                                Face::Right,
+                            ] {
+                                let face_offset = face.get_offset();
+                                let neighbor_pos = position + face_offset;
+                                let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
+                                    block_registry
+                                        .get_block(
+                                            self.blocks[neighbor_pos.x as usize]
+                                                [neighbor_pos.y as usize]
+                                                [neighbor_pos.z as usize],
+                                        )
+                                        .is_face_full(&face.opposite())
+                                } else {
+                                    false
+                                };
+                                let texture = match face {
+                                    Face::Front => north,
+                                    Face::Back => south,
+                                    Face::Right => right,
+                                    Face::Left => left,
+                                    Face::Up => up,
+                                    Face::Down => down,
+                                };
+                                if !neighbor_side_full {
+                                    let face_vertices = face.get_vertices();
+                                    let uv = texture.get_coords();
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[0].x + x,
+                                        y: face_vertices[0].y + y,
+                                        z: face_vertices[0].z + z,
+                                        u: uv.0,
+                                        v: uv.1,
+                                        render_data: block.render_data,
+                                    });
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[1].x + x,
+                                        y: face_vertices[1].y + y,
+                                        z: face_vertices[1].z + z,
+                                        u: uv.2,
+                                        v: uv.1,
+                                        render_data: block.render_data,
+                                    });
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[2].x + x,
+                                        y: face_vertices[2].y + y,
+                                        z: face_vertices[2].z + z,
+                                        u: uv.2,
+                                        v: uv.3,
+                                        render_data: block.render_data,
+                                    });
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[2].x + x,
+                                        y: face_vertices[2].y + y,
+                                        z: face_vertices[2].z + z,
+                                        u: uv.2,
+                                        v: uv.3,
+                                        render_data: block.render_data,
+                                    });
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[3].x + x,
+                                        y: face_vertices[3].y + y,
+                                        z: face_vertices[3].z + z,
+                                        u: uv.0,
+                                        v: uv.3,
+                                        render_data: block.render_data,
+                                    });
+                                    vertices.push(glwrappers::Vertex {
+                                        x: face_vertices[0].x + x,
+                                        y: face_vertices[0].y + y,
+                                        z: face_vertices[0].z + z,
+                                        u: uv.0,
+                                        v: uv.1,
+                                        render_data: block.render_data,
+                                    });
+                                }
                             }
+                        }
+                        BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                            model.add_to_chunk_mesh(
+                                &mut vertices,
+                                block.render_data,
+                                BlockPosition {
+                                    x: bx,
+                                    y: by,
+                                    z: bz,
+                                },
+                            );
                         }
                     }
                 }
@@ -398,48 +423,51 @@ impl<'a> Chunk<'a> {
         }
     }
 }
-
-#[derive(Clone, Copy)]
+#[derive(Clone)]
+pub enum BlockRenderType {
+    Air,
+    Cube(
+        AtlassedTexture,
+        AtlassedTexture,
+        AtlassedTexture,
+        AtlassedTexture,
+        AtlassedTexture,
+        AtlassedTexture,
+    ),
+    StaticModel(StaticBlockModel, bool, bool, bool, bool, bool, bool),
+}
+#[derive(Clone)]
 pub struct Block {
-    pub up_texture: Option<AtlassedTexture>,
-    pub down_texture: Option<AtlassedTexture>,
-    pub left_texture: Option<AtlassedTexture>,
-    pub right_texture: Option<AtlassedTexture>,
-    pub front_texture: Option<AtlassedTexture>,
-    pub back_texture: Option<AtlassedTexture>,
+    pub render_type: BlockRenderType,
     pub render_data: u8,
 }
 impl Block {
     pub fn new_air() -> Self {
         Block {
-            up_texture: None,
-            down_texture: None,
-            left_texture: None,
-            right_texture: None,
-            front_texture: None,
-            back_texture: None,
             render_data: 0,
+            render_type: BlockRenderType::Air,
         }
     }
     pub fn new_full(texture: AtlassedTexture, render_data: u8) -> Self {
         Block {
-            up_texture: Some(texture),
-            down_texture: Some(texture),
-            left_texture: Some(texture),
-            right_texture: Some(texture),
-            front_texture: Some(texture),
-            back_texture: Some(texture),
+            render_type: BlockRenderType::Cube(
+                texture, texture, texture, texture, texture, texture,
+            ),
             render_data,
         }
     }
-    pub fn get_texture(&self, face: &Face) -> &Option<AtlassedTexture> {
-        match face {
-            Face::Front => &self.front_texture,
-            Face::Back => &self.back_texture,
-            Face::Left => &self.left_texture,
-            Face::Right => &self.right_texture,
-            Face::Up => &self.up_texture,
-            Face::Down => &self.down_texture,
+    pub fn is_face_full(&self, face: &Face) -> bool {
+        match self.render_type {
+            BlockRenderType::Air => false,
+            BlockRenderType::Cube(_, _, _, _, _, _) => true,
+            BlockRenderType::StaticModel(_, north, south, right, left, up, down) => match face {
+                Face::Front => north,
+                Face::Back => south,
+                Face::Left => left,
+                Face::Right => right,
+                Face::Up => up,
+                Face::Down => down,
+            },
         }
     }
 }
@@ -537,7 +565,288 @@ pub struct Entity {
     pub position: Position,
     pub rotation: f32,
 }
-
+#[derive(Clone)]
+pub struct BlockModelCube {
+    pub from: Position,
+    pub to: Position,
+    pub north_uv: (f32, f32, f32, f32),
+    pub south_uv: (f32, f32, f32, f32),
+    pub right_uv: (f32, f32, f32, f32),
+    pub left_uv: (f32, f32, f32, f32),
+    pub up_uv: (f32, f32, f32, f32),
+    pub down_uv: (f32, f32, f32, f32),
+}
+#[derive(Clone)]
+pub struct StaticBlockModel {
+    pub cubes: Vec<BlockModelCube>,
+}
+impl StaticBlockModel {
+    pub fn new(json: &JsonValue, texture: &AtlassedTexture) -> Self {
+        let mut cubes = Vec::new();
+        for element in json["elements"].members() {
+            assert_eq!(element["type"], "cube");
+            let from = EntityModel::parse_array_into_position(&element["from"]);
+            let to = EntityModel::parse_array_into_position(&element["to"]);
+            let faces = &element["faces"];
+            cubes.push(BlockModelCube {
+                from,
+                to,
+                north_uv: EntityModel::parse_uv(&faces["north"], texture),
+                south_uv: EntityModel::parse_uv(&faces["south"], texture),
+                right_uv: EntityModel::parse_uv(&faces["east"], texture),
+                left_uv: EntityModel::parse_uv(&faces["west"], texture),
+                up_uv: EntityModel::parse_uv(&faces["up"], texture),
+                down_uv: EntityModel::parse_uv(&faces["down"], texture),
+            });
+        }
+        StaticBlockModel { cubes }
+    }
+    pub fn add_to_chunk_mesh(
+        &self,
+        vertices: &mut Vec<Vertex>,
+        render_data: u8,
+        position: BlockPosition,
+    ) {
+        for cube in &self.cubes {
+            StaticBlockModel::create_cube(
+                vertices,
+                cube.from,
+                cube.to,
+                cube.north_uv,
+                cube.south_uv,
+                cube.up_uv,
+                cube.down_uv,
+                cube.left_uv,
+                cube.right_uv,
+                render_data,
+                position,
+            );
+        }
+    }
+    fn create_cube(
+        vertices: &mut Vec<Vertex>,
+        from: Position,
+        to: Position,
+        north: (f32, f32, f32, f32),
+        south: (f32, f32, f32, f32),
+        up: (f32, f32, f32, f32),
+        down: (f32, f32, f32, f32),
+        west: (f32, f32, f32, f32),
+        east: (f32, f32, f32, f32),
+        render_data: u8,
+        position: BlockPosition,
+    ) {
+        let from = Position {
+            x: (from.x / 16.) + position.x as f32 + 0.5,
+            y: (from.y / 16.) + position.y as f32,
+            z: (from.z / 16.) + position.z as f32 + 0.5,
+        };
+        let to = Position {
+            x: (to.x / 16.) + position.x as f32 + 0.5,
+            y: (to.y / 16.) + position.y as f32,
+            z: (to.z / 16.) + position.z as f32 + 0.5,
+        };
+        let size = Position {
+            x: to.x - from.x,
+            y: to.y - from.y,
+            z: to.z - from.z,
+        };
+        StaticBlockModel::create_face(
+            vertices,
+            from,
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            down,
+            render_data,
+        );
+        StaticBlockModel::create_face(
+            vertices,
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            up,
+            render_data,
+        );
+        StaticBlockModel::create_face(
+            vertices,
+            Position {
+                x: from.x,
+                y: from.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            west,
+            render_data,
+        );
+        StaticBlockModel::create_face(
+            vertices,
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            east,
+            render_data,
+        );
+        StaticBlockModel::create_face(
+            vertices,
+            Position {
+                x: from.x,
+                y: from.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z,
+            },
+            north,
+            render_data,
+        );
+        StaticBlockModel::create_face(
+            vertices,
+            Position {
+                x: from.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x + size.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            Position {
+                x: from.x,
+                y: from.y + size.y,
+                z: from.z + size.z,
+            },
+            south,
+            render_data,
+        );
+    }
+    fn create_face(
+        vertices: &mut Vec<Vertex>,
+        p1: Position,
+        p2: Position,
+        p3: Position,
+        p4: Position,
+        uv: (f32, f32, f32, f32),
+        render_data: u8,
+    ) {
+        let v1 = Vertex {
+            x: p1.x,
+            y: p1.y,
+            z: p1.z,
+            u: uv.0,
+            v: uv.1,
+            render_data,
+        };
+        let v2 = Vertex {
+            x: p2.x,
+            y: p2.y,
+            z: p2.z,
+            u: uv.2,
+            v: uv.1,
+            render_data,
+        };
+        let v3 = Vertex {
+            x: p3.x,
+            y: p3.y,
+            z: p3.z,
+            u: uv.2,
+            v: uv.3,
+            render_data,
+        };
+        let v4 = Vertex {
+            x: p4.x,
+            y: p4.y,
+            z: p4.z,
+            u: uv.0,
+            v: uv.3,
+            render_data,
+        };
+        vertices.push(v1);
+        vertices.push(v2);
+        vertices.push(v3);
+        vertices.push(v3);
+        vertices.push(v4);
+        vertices.push(v1);
+    }
+}
 pub struct EntityModel {
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,

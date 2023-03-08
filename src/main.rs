@@ -15,7 +15,10 @@ use std::sync::Mutex;
 use std::time::Duration;
 use std::time::Instant;
 
+use game::Block;
 use game::BlockRegistry;
+use game::BlockRenderType;
+use game::StaticBlockModel;
 use gui::Color;
 use gui::GUIQuad;
 use image::EncodableLayout;
@@ -181,82 +184,103 @@ fn main() {
                                 y: by,
                                 z: bz,
                             };
-                            for face in [
-                                Face::Front,
-                                Face::Back,
-                                Face::Up,
-                                Face::Down,
-                                Face::Left,
-                                Face::Right,
-                            ] {
-                                let face_offset = face.get_offset();
-                                let neighbor_pos = position + face_offset;
-                                let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
-                                    block_registry
-                                        .get_block(
-                                            blocks[neighbor_pos.x as usize]
-                                                [neighbor_pos.y as usize]
-                                                [neighbor_pos.z as usize],
-                                        )
-                                        .get_texture(&face.opposite())
-                                        .is_some()
-                                } else {
-                                    false
-                                };
-                                let face_texture = block.get_texture(&face);
-                                if let Some(texture) = face_texture {
-                                    if !neighbor_side_full {
-                                        let face_vertices = face.get_vertices();
-                                        let uv = texture.get_coords();
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[0].x + x,
-                                            y: face_vertices[0].y + y,
-                                            z: face_vertices[0].z + z,
-                                            u: uv.0,
-                                            v: uv.1,
-                                            render_data: block.render_data,
-                                        });
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[1].x + x,
-                                            y: face_vertices[1].y + y,
-                                            z: face_vertices[1].z + z,
-                                            u: uv.2,
-                                            v: uv.1,
-                                            render_data: block.render_data,
-                                        });
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[2].x + x,
-                                            y: face_vertices[2].y + y,
-                                            z: face_vertices[2].z + z,
-                                            u: uv.2,
-                                            v: uv.3,
-                                            render_data: block.render_data,
-                                        });
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[2].x + x,
-                                            y: face_vertices[2].y + y,
-                                            z: face_vertices[2].z + z,
-                                            u: uv.2,
-                                            v: uv.3,
-                                            render_data: block.render_data,
-                                        });
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[3].x + x,
-                                            y: face_vertices[3].y + y,
-                                            z: face_vertices[3].z + z,
-                                            u: uv.0,
-                                            v: uv.3,
-                                            render_data: block.render_data,
-                                        });
-                                        vertices.push(glwrappers::Vertex {
-                                            x: face_vertices[0].x + x,
-                                            y: face_vertices[0].y + y,
-                                            z: face_vertices[0].z + z,
-                                            u: uv.0,
-                                            v: uv.1,
-                                            render_data: block.render_data,
-                                        });
+                            match &block.render_type {
+                                BlockRenderType::Air => {}
+                                BlockRenderType::Cube(north, south, right, left, up, down) => {
+                                    for face in [
+                                        Face::Front,
+                                        Face::Back,
+                                        Face::Up,
+                                        Face::Down,
+                                        Face::Left,
+                                        Face::Right,
+                                    ] {
+                                        let face_offset = face.get_offset();
+                                        let neighbor_pos = position + face_offset;
+                                        let neighbor_side_full =
+                                            if neighbor_pos.is_inside_origin_chunk() {
+                                                block_registry
+                                                    .get_block(
+                                                        blocks[neighbor_pos.x as usize]
+                                                            [neighbor_pos.y as usize]
+                                                            [neighbor_pos.z as usize],
+                                                    )
+                                                    .is_face_full(&face.opposite())
+                                            } else {
+                                                false
+                                            };
+                                        let texture = match face {
+                                            Face::Front => north,
+                                            Face::Back => south,
+                                            Face::Right => right,
+                                            Face::Left => left,
+                                            Face::Up => up,
+                                            Face::Down => down,
+                                        };
+                                        if !neighbor_side_full {
+                                            let face_vertices = face.get_vertices();
+                                            let uv = texture.get_coords();
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[0].x + x,
+                                                y: face_vertices[0].y + y,
+                                                z: face_vertices[0].z + z,
+                                                u: uv.0,
+                                                v: uv.1,
+                                                render_data: block.render_data,
+                                            });
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[1].x + x,
+                                                y: face_vertices[1].y + y,
+                                                z: face_vertices[1].z + z,
+                                                u: uv.2,
+                                                v: uv.1,
+                                                render_data: block.render_data,
+                                            });
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[2].x + x,
+                                                y: face_vertices[2].y + y,
+                                                z: face_vertices[2].z + z,
+                                                u: uv.2,
+                                                v: uv.3,
+                                                render_data: block.render_data,
+                                            });
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[2].x + x,
+                                                y: face_vertices[2].y + y,
+                                                z: face_vertices[2].z + z,
+                                                u: uv.2,
+                                                v: uv.3,
+                                                render_data: block.render_data,
+                                            });
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[3].x + x,
+                                                y: face_vertices[3].y + y,
+                                                z: face_vertices[3].z + z,
+                                                u: uv.0,
+                                                v: uv.3,
+                                                render_data: block.render_data,
+                                            });
+                                            vertices.push(glwrappers::Vertex {
+                                                x: face_vertices[0].x + x,
+                                                y: face_vertices[0].y + y,
+                                                z: face_vertices[0].z + z,
+                                                u: uv.0,
+                                                v: uv.1,
+                                                render_data: block.render_data,
+                                            });
+                                        }
                                     }
+                                }
+                                BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                                    model.add_to_chunk_mesh(
+                                        &mut vertices,
+                                        block.render_data,
+                                        BlockPosition {
+                                            x: bx,
+                                            y: by,
+                                            z: bz,
+                                        },
+                                    );
                                 }
                             }
                         }
@@ -466,27 +490,92 @@ fn main() {
                                     let mut guard = block_registry.lock().unwrap();
                                     let block_registry_blocks = &mut guard.blocks;
                                     for block in &blocks {
-                                        block_registry_blocks.push(game::Block {
-                                            render_data: 0,
-                                            up_texture: Some(
-                                                texture_atlas.get(&block.up).unwrap().clone(),
-                                            ),
-                                            down_texture: Some(
-                                                texture_atlas.get(&block.down).unwrap().clone(),
-                                            ),
-                                            left_texture: Some(
-                                                texture_atlas.get(&block.left).unwrap().clone(),
-                                            ),
-                                            right_texture: Some(
-                                                texture_atlas.get(&block.right).unwrap().clone(),
-                                            ),
-                                            front_texture: Some(
-                                                texture_atlas.get(&block.north).unwrap().clone(),
-                                            ),
-                                            back_texture: Some(
-                                                texture_atlas.get(&block.south).unwrap().clone(),
-                                            ),
-                                        });
+                                        match block.json["type"].as_str().unwrap() {
+                                            "cube" => {
+                                                block_registry_blocks.push(game::Block {
+                                                    render_data: 0,
+                                                    render_type: game::BlockRenderType::Cube(
+                                                        texture_atlas
+                                                            .get(
+                                                                block.json["north"]
+                                                                    .as_str()
+                                                                    .unwrap(),
+                                                            )
+                                                            .unwrap()
+                                                            .clone(),
+                                                        texture_atlas
+                                                            .get(
+                                                                block.json["south"]
+                                                                    .as_str()
+                                                                    .unwrap(),
+                                                            )
+                                                            .unwrap()
+                                                            .clone(),
+                                                        texture_atlas
+                                                            .get(
+                                                                block.json["right"]
+                                                                    .as_str()
+                                                                    .unwrap(),
+                                                            )
+                                                            .unwrap()
+                                                            .clone(),
+                                                        texture_atlas
+                                                            .get(
+                                                                block.json["left"]
+                                                                    .as_str()
+                                                                    .unwrap(),
+                                                            )
+                                                            .unwrap()
+                                                            .clone(),
+                                                        texture_atlas
+                                                            .get(block.json["up"].as_str().unwrap())
+                                                            .unwrap()
+                                                            .clone(),
+                                                        texture_atlas
+                                                            .get(
+                                                                block.json["down"]
+                                                                    .as_str()
+                                                                    .unwrap(),
+                                                            )
+                                                            .unwrap()
+                                                            .clone(),
+                                                    ),
+                                                });
+                                            }
+                                            "static" => {
+                                                let texture = texture_atlas
+                                                    .get(block.json["texture"].as_str().unwrap())
+                                                    .unwrap()
+                                                    .clone();
+                                                block_registry_blocks.push(Block {
+                                                    render_data: 0,
+                                                    render_type: BlockRenderType::StaticModel(
+                                                        StaticBlockModel::new(
+                                                            &json::parse(
+                                                                std::fs::read_to_string(
+                                                                    block.json["model"]
+                                                                        .as_str()
+                                                                        .unwrap()
+                                                                        .to_string()
+                                                                        + ".bbmodel",
+                                                                )
+                                                                .unwrap()
+                                                                .as_str(),
+                                                            )
+                                                            .unwrap(),
+                                                            &texture,
+                                                        ),
+                                                        block.json["north"].as_bool().unwrap(),
+                                                        block.json["south"].as_bool().unwrap(),
+                                                        block.json["right"].as_bool().unwrap(),
+                                                        block.json["left"].as_bool().unwrap(),
+                                                        block.json["up"].as_bool().unwrap(),
+                                                        block.json["down"].as_bool().unwrap(),
+                                                    ),
+                                                })
+                                            }
+                                            _ => unreachable!(),
+                                        }
                                     }
                                     let mut item_registry = item_registry.borrow_mut();
                                     for item in items {
