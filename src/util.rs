@@ -1,8 +1,6 @@
-use endio::BigEndian;
 use endio::LERead;
 use endio::LEWrite;
 
-use endio::Serialize;
 use enum_iterator::Sequence;
 
 use json::JsonValue;

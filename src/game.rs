@@ -1,17 +1,15 @@
-use std::{cell::RefCell, collections::HashMap, ops::AddAssign, sync::Mutex};
+use std::{collections::HashMap, ops::AddAssign, sync::Mutex};
 
 use crate::{
     glwrappers::Vertex,
     util::{self, *},
 };
-use enum_iterator::Sequence;
 use json::JsonValue;
-use ogl33::GL_FALSE;
 use sdl2::keyboard::Keycode;
 use ultraviolet::*;
 use uuid::Uuid;
 
-use crate::glwrappers::{self, ColorVertex, ModelVertex};
+use crate::glwrappers::{self, ModelVertex};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ClientPlayer {
@@ -997,14 +995,13 @@ impl EntityModel {
             }) * ultraviolet::Mat4::from_rotation_y(rotation),
         );
         let mut bone_matrices = Vec::new();
-        let mut i = 0;
-        for bone in &self.bones {
+        //todo
+        for _bone in &self.bones {
             bone_matrices.push(ultraviolet::Mat4::from_translation(ultraviolet::Vec3 {
                 x: 0.,
                 y: 0.,
                 z: 0., /*i as f32*/
             }));
-            i += 1;
         }
         shader.set_uniform_matrices(
             shader.get_uniform_location("bones\0").unwrap(),

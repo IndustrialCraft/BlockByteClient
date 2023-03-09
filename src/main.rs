@@ -7,33 +7,25 @@ mod util;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::net::Ipv4Addr;
-use std::net::SocketAddr;
-use std::net::SocketAddrV4;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::time::Duration;
 use std::time::Instant;
 
 use game::Block;
 use game::BlockRegistry;
 use game::BlockRenderType;
 use game::StaticBlockModel;
-use gui::Color;
-use gui::GUIQuad;
 use image::EncodableLayout;
 use image::RgbaImage;
 use ogl33::c_char;
 use ogl33::c_void;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
-use sdl2::sys::KeyCode;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
 use util::*;
 
 use endio::BERead;
-use endio::LEWrite;
 
 use std::rc::Rc;
 
@@ -67,7 +59,6 @@ fn main() {
     });
     let (mut win_width, mut win_height) = window.size();
     let mut last_time = 0f32;
-    let camera_speed = 100.0f32;
     let mut keys_held: std::collections::HashSet<sdl2::keyboard::Keycode> =
         std::collections::HashSet::new();
     sdl.mouse().set_relative_mouse_mode(true);
@@ -486,7 +477,7 @@ fn main() {
                                 NetworkMessageS2C::DeleteEntity(id) => {
                                     entities.remove(&id);
                                 }
-                                NetworkMessageS2C::InitializeContent(blocks, entities, items) => {
+                                NetworkMessageS2C::InitializeContent(blocks, _entities, items) => {
                                     let mut guard = block_registry.lock().unwrap();
                                     let block_registry_blocks = &mut guard.blocks;
                                     for block in &blocks {
