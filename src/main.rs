@@ -294,7 +294,7 @@ fn main() {
         .unwrap();
     'main_loop: loop {
         let render_start_time = Instant::now();
-        let raycast_result = { raycast(&world, &camera) };
+        let raycast_result = { raycast(&world, &camera, &block_registry.lock().unwrap()) };
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { timestamp: _ } => break 'main_loop,
@@ -733,6 +733,7 @@ fn pack_textures(
 pub fn raycast(
     world: &game::World,
     camera: &game::ClientPlayer,
+    block_registry: &BlockRegistry,
 ) -> Option<(BlockPosition, u32, Face)> {
     //TODO: better algorithm
     let mut ray_pos = camera.get_eye().clone();
@@ -749,18 +750,37 @@ pub fn raycast(
             z: ray_pos.z.floor() as i32,
         };
         if let Some(id) = world.get_block(position) {
-            if id != 0 {
-                let mut least_diff_face = Face::Up;
-                for face in enum_iterator::all::<Face>() {
-                    let offset = face.get_offset();
-                    let diff = (position.x - last_pos.x + offset.x).abs()
-                        + (position.y - last_pos.y + offset.y).abs()
-                        + (position.z - last_pos.z + offset.z).abs();
-                    if diff <= 1 {
-                        least_diff_face = face;
+            match &block_registry.get_block(id).render_type {
+                BlockRenderType::Air => {}
+                BlockRenderType::Cube(_, _, _, _, _, _) => {
+                    let mut least_diff_face = Face::Up;
+                    for face in enum_iterator::all::<Face>() {
+                        let offset = face.get_offset();
+                        let diff = (position.x - last_pos.x + offset.x).abs()
+                            + (position.y - last_pos.y + offset.y).abs()
+                            + (position.z - last_pos.z + offset.z).abs();
+                        if diff <= 1 {
+                            least_diff_face = face;
+                        }
+                    }
+                    return Some((position, id, least_diff_face));
+                }
+                BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                    let x = ray_pos.x - (position.x as f32);
+                    let y = ray_pos.y - (position.y as f32);
+                    let z = ray_pos.z - (position.z as f32);
+                    for cube in &model.cubes {
+                        if x >= cube.from.x
+                            && x <= cube.to.x
+                            && y >= cube.from.y
+                            && y <= cube.to.y
+                            && z >= cube.from.z
+                            && z <= cube.to.z
+                        {
+                            return Some((position, id, Face::Up));
+                        }
                     }
                 }
-                return Some((position, id, least_diff_face));
             }
         }
         last_pos = position.clone();
