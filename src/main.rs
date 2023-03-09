@@ -119,7 +119,6 @@ fn main() {
     video_subsystem
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
-    let grass_texture = texture_atlas.get("grass").unwrap();
     let player_texture = texture_atlas.get("player").unwrap();
     let model = game::EntityModel::new(
         json::parse(
@@ -135,7 +134,7 @@ fn main() {
             blocks: vec![game::Block::new_air()],
         }));
     let item_registry = Rc::new(RefCell::new(Vec::new()));
-    let outline_renderer = BlockOutline::new();
+    let mut outline_renderer = BlockOutline::new();
     let mut world = game::World::new(&block_registry);
     let mut event_pump = sdl.event_pump().unwrap();
     let timer = sdl.timer().unwrap();
@@ -676,9 +675,14 @@ fn main() {
                     1000.,
                 ) * camera.create_view_matrix(),
             );
-            if let Some((position, _, _)) = raycast_result {
+            if let Some((position, id, _)) = raycast_result {
                 ogl33::glDisable(ogl33::GL_DEPTH_TEST);
-                outline_renderer.render(position, &outline_shader);
+                outline_renderer.render(
+                    id,
+                    position,
+                    &outline_shader,
+                    &block_registry.lock().unwrap(),
+                );
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
 
@@ -768,6 +772,8 @@ pub fn raycast(
 struct BlockOutline {
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
+    last_id: u32,
+    vertex_count: i32,
 }
 impl BlockOutline {
     pub fn new() -> Self {
@@ -800,11 +806,14 @@ impl BlockOutline {
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
         }
-        let mut block_outline = BlockOutline { vao, vbo };
-        block_outline.setup_vbo(1., 0., 0.);
-        block_outline
+        BlockOutline {
+            vao,
+            vbo,
+            last_id: 0,
+            vertex_count: 0,
+        }
     }
-    fn setup_vbo(&mut self, r: f32, g: f32, b: f32) {
+    fn upload_cube(&mut self, r: f32, g: f32, b: f32) {
         let mut vertices: Vec<glwrappers::ColorVertex> = Vec::new();
         vertices.push([0., 0., 0., r, g, b]);
         vertices.push([1., 0., 0., r, g, b]);
@@ -836,8 +845,53 @@ impl BlockOutline {
             bytemuck::cast_slice(vertices.as_slice()),
             ogl33::GL_STATIC_DRAW,
         );
+        self.vertex_count = 24;
     }
-    pub fn render(&self, position: BlockPosition, shader: &glwrappers::Shader) {
+    fn upload_static_model(&mut self, model: &StaticBlockModel, r: f32, g: f32, b: f32) {
+        let mut vertices: Vec<glwrappers::ColorVertex> = Vec::new();
+        for cube in &model.cubes {
+            let from = cube.from;
+            let to = cube.to;
+            vertices.push([from.x, from.y, from.z, r, g, b]);
+            vertices.push([to.x, from.y, from.z, r, g, b]);
+            vertices.push([to.x, from.y, from.z, r, g, b]);
+            vertices.push([to.x, from.y, to.z, r, g, b]);
+            vertices.push([to.x, from.y, to.z, r, g, b]);
+            vertices.push([from.x, from.y, to.z, r, g, b]);
+            vertices.push([from.x, from.y, to.z, r, g, b]);
+            vertices.push([from.x, from.y, from.z, r, g, b]);
+
+            vertices.push([from.x, to.y, from.z, r, g, b]);
+            vertices.push([to.x, to.y, from.z, r, g, b]);
+            vertices.push([to.x, to.y, from.z, r, g, b]);
+            vertices.push([to.x, to.y, to.z, r, g, b]);
+            vertices.push([to.x, to.y, to.z, r, g, b]);
+            vertices.push([from.x, to.y, to.z, r, g, b]);
+            vertices.push([from.x, to.y, to.z, r, g, b]);
+            vertices.push([from.x, to.y, from.z, r, g, b]);
+
+            vertices.push([from.x, from.y, from.z, r, g, b]);
+            vertices.push([from.x, to.y, from.z, r, g, b]);
+            vertices.push([to.x, from.y, from.z, r, g, b]);
+            vertices.push([to.x, to.y, from.z, r, g, b]);
+            vertices.push([to.x, from.y, to.z, r, g, b]);
+            vertices.push([to.x, to.y, to.z, r, g, b]);
+            vertices.push([from.x, from.y, to.z, r, g, b]);
+            vertices.push([from.x, to.y, to.z, r, g, b]);
+        }
+        self.vbo.upload_data(
+            bytemuck::cast_slice(vertices.as_slice()),
+            ogl33::GL_STATIC_DRAW,
+        );
+        self.vertex_count = 24 * model.cubes.len() as i32;
+    }
+    pub fn render(
+        &mut self,
+        id: u32,
+        position: BlockPosition,
+        shader: &glwrappers::Shader,
+        block_registry: &BlockRegistry,
+    ) {
         self.vao.bind();
         self.vbo.bind();
         shader.set_uniform_matrix(
@@ -850,8 +904,33 @@ impl BlockOutline {
                 z: (position.z) as f32,
             }),
         );
-        unsafe {
-            ogl33::glDrawArrays(ogl33::GL_LINES, 0, 24 as i32);
+        match (
+            &block_registry.get_block(self.last_id).render_type,
+            &block_registry.get_block(id).render_type,
+        ) {
+            (BlockRenderType::Air, BlockRenderType::Cube(_, _, _, _, _, _)) => {
+                self.upload_cube(1., 0., 0.);
+            }
+            (BlockRenderType::Air, BlockRenderType::StaticModel(model, _, _, _, _, _, _)) => {
+                self.upload_static_model(model, 1., 0., 0.);
+            }
+            (
+                BlockRenderType::Cube(_, _, _, _, _, _),
+                BlockRenderType::StaticModel(model, _, _, _, _, _, _),
+            ) => {
+                self.upload_static_model(model, 1., 0., 0.);
+            }
+            (
+                BlockRenderType::StaticModel(_, _, _, _, _, _, _),
+                BlockRenderType::Cube(_, _, _, _, _, _),
+            ) => {
+                self.upload_cube(1., 0., 0.);
+            }
+            _ => {}
         }
+        unsafe {
+            ogl33::glDrawArrays(ogl33::GL_LINES, 0, self.vertex_count);
+        }
+        self.last_id = id;
     }
 }

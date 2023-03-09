@@ -637,14 +637,14 @@ impl StaticBlockModel {
         position: BlockPosition,
     ) {
         let from = Position {
-            x: (from.x / 16.) + position.x as f32 + 0.5,
-            y: (from.y / 16.) + position.y as f32,
-            z: (from.z / 16.) + position.z as f32 + 0.5,
+            x: (from.x) + position.x as f32,
+            y: (from.y) + position.y as f32,
+            z: (from.z) + position.z as f32,
         };
         let to = Position {
-            x: (to.x / 16.) + position.x as f32 + 0.5,
-            y: (to.y / 16.) + position.y as f32,
-            z: (to.z / 16.) + position.z as f32 + 0.5,
+            x: (to.x) + position.x as f32,
+            y: (to.y) + position.y as f32,
+            z: (to.z) + position.z as f32,
         };
         let size = Position {
             x: to.x - from.x,
@@ -1024,9 +1024,9 @@ impl EntityModel {
     fn parse_array_into_position(json: &json::JsonValue) -> Position {
         assert_eq!(json.len(), 3);
         Position {
-            x: json[0].as_f32().unwrap(),
-            y: json[1].as_f32().unwrap(),
-            z: json[2].as_f32().unwrap(),
+            x: (json[0].as_f32().unwrap() / 16.) + 0.5,
+            y: json[1].as_f32().unwrap() / 16.,
+            z: (json[2].as_f32().unwrap() / 16.) + 0.5,
         }
     }
     fn create_cube(
@@ -1041,16 +1041,6 @@ impl EntityModel {
         east: (f32, f32, f32, f32),
         bone_id: u16,
     ) {
-        let from = Position {
-            x: from.x / 16.,
-            y: from.y / 16.,
-            z: from.z / 16.,
-        };
-        let to = Position {
-            x: to.x / 16.,
-            y: to.y / 16.,
-            z: to.z / 16.,
-        };
         let size = Position {
             x: to.x - from.x,
             y: to.y - from.y,
