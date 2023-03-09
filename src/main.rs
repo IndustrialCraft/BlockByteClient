@@ -737,13 +737,9 @@ pub fn raycast(
 ) -> Option<(BlockPosition, u32, Face)> {
     //TODO: better algorithm
     let mut ray_pos = camera.get_eye().clone();
-    let dir = camera.make_front().normalized() * 0.02;
-    let mut last_pos = BlockPosition {
-        x: ray_pos.x.floor() as i32,
-        y: ray_pos.y.floor() as i32,
-        z: ray_pos.z.floor() as i32,
-    };
-    for _ in 0..250 {
+    let dir = camera.make_front().normalized() * 0.01;
+    let mut last_pos = ray_pos.clone();
+    for _ in 0..500 {
         let position = BlockPosition {
             x: ray_pos.x.floor() as i32,
             y: ray_pos.y.floor() as i32,
@@ -753,6 +749,7 @@ pub fn raycast(
             match &block_registry.get_block(id).render_type {
                 BlockRenderType::Air => {}
                 BlockRenderType::Cube(_, _, _, _, _, _) => {
+                    let last_pos = last_pos.to_block_pos();
                     let mut least_diff_face = Face::Up;
                     for face in enum_iterator::all::<Face>() {
                         let offset = face.get_offset();
@@ -777,13 +774,33 @@ pub fn raycast(
                             && z >= cube.from.z
                             && z <= cube.to.z
                         {
-                            return Some((position, id, Face::Up));
+                            let size = Position {
+                                x: cube.to.x - cube.from.x,
+                                y: cube.to.y - cube.from.y,
+                                z: cube.to.z - cube.from.z,
+                            };
+                            let mut least_diff_face = Face::Up;
+                            let mut least_diff = 10.;
+                            for face in enum_iterator::all::<Face>() {
+                                let offset = face.get_offset();
+                                let diff = (((x - cube.from.x) / size.x) - 0.5 + (offset.x as f32))
+                                    .abs()
+                                    + (((y - cube.from.y) / size.y) - 0.5 + (offset.y as f32))
+                                        .abs()
+                                    + (((z - cube.from.z) / size.z) - 0.5 + (offset.z as f32))
+                                        .abs();
+                                if diff <= least_diff {
+                                    least_diff = diff;
+                                    least_diff_face = face;
+                                }
+                            }
+                            return Some((position, id, least_diff_face.opposite()));
                         }
                     }
                 }
             }
         }
-        last_pos = position.clone();
+        last_pos = ray_pos.clone();
         ray_pos = ray_pos.add(dir.x, dir.y, dir.z);
     }
     None
