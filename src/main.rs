@@ -954,6 +954,14 @@ impl BlockOutline {
             ) => {
                 self.upload_cube(1., 0., 0.);
             }
+            (
+                BlockRenderType::StaticModel(_, _, _, _, _, _, _),
+                BlockRenderType::StaticModel(model, _, _, _, _, _, _),
+            ) => {
+                if self.last_id != id {
+                    self.upload_static_model(model, 1., 0., 0.);
+                }
+            }
             _ => {}
         }
         unsafe {
