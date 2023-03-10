@@ -54,7 +54,7 @@ fn main() {
 
     let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
         x: 0f32,
-        y: 0f32,
+        y: 50f32,
         z: 0f32,
     });
     let (mut win_width, mut win_height) = window.size();

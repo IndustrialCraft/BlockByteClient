@@ -212,6 +212,24 @@ impl GUIComponent {
             }
         }
     }
+    pub fn get_width(&self) -> f32 {
+        match self {
+            Self::ImageComponent(_, _, w, _, _, _) => *w,
+            GUIComponent::TextComponent(_, _, scale, text, _) => text
+                .split('\n')
+                .map(|t| (t.len() as f32) * 0.06 * scale)
+                .reduce(f32::max)
+                .unwrap_or(0.),
+        }
+    }
+    pub fn get_height(&self) -> f32 {
+        match self {
+            Self::ImageComponent(_, _, _, h, _, _) => *h,
+            Self::TextComponent(_, _, scale, text, _) => {
+                text.split('\n').count() as f32 * 0.08f32 * scale
+            }
+        }
+    }
 }
 pub struct GUI {
     cursor: (f32, f32),
