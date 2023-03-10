@@ -18,6 +18,7 @@ pub struct ClientPlayer {
     pub pitch_deg: f32,
     yaw_deg: f32,
     shifting: bool,
+    shifting_animation: f32,
 }
 impl ClientPlayer {
     const UP: Vec3 = Vec3 {
@@ -119,7 +120,9 @@ impl ClientPlayer {
             }
         }
         self.position += total_move;
-        self.velocity.y -= delta_time * 20f32
+        self.velocity.y -= delta_time * 20f32;
+        self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 30.;
+        self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
     }
     fn collides_at(position: util::Position, world: &World, shifting: bool) -> bool {
         let bounding_box = AABB {
@@ -147,14 +150,11 @@ impl ClientPlayer {
             pitch_deg: 0.0,
             yaw_deg: 0.0,
             shifting: false,
+            shifting_animation: 0f32,
         }
     }
     fn eye_height_diff(&self) -> f32 {
-        if self.shifting {
-            1.25
-        } else {
-            1.75
-        }
+        1.75 - self.shifting_animation
     }
     pub fn get_eye(&self) -> Position {
         Position::new(self.position).add(0., self.eye_height_diff(), 0.)
