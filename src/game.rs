@@ -87,11 +87,19 @@ impl ClientPlayer {
             total_move.x = 0.;
             self.velocity.x = 0.;
         }
-        if ClientPlayer::collides_at(position.add(0., total_move.y, 0.), world, self.shifting) {
+        if ClientPlayer::collides_at(
+            position.add(total_move.x, total_move.y, 0.),
+            world,
+            self.shifting,
+        ) {
             total_move.y = 0.;
             self.velocity.y = 0.;
         }
-        if ClientPlayer::collides_at(position.add(0., 0., total_move.z), world, self.shifting) {
+        if ClientPlayer::collides_at(
+            position.add(total_move.x, total_move.y, total_move.z),
+            world,
+            self.shifting,
+        ) {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
