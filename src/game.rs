@@ -121,7 +121,7 @@ impl ClientPlayer {
         }
         self.position += total_move;
         self.velocity.y -= delta_time * 20f32;
-        self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 30.;
+        self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 40.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
     }
     fn collides_at(position: util::Position, world: &World, shifting: bool) -> bool {
@@ -424,7 +424,7 @@ impl<'a> Chunk<'a> {
             self.modified = false;
         }
         self.vao.bind();
-        self.vbo.bind();
+        //self.vbo.bind();
         shader.set_uniform_matrix(
             shader
                 .get_uniform_location("model\0")
