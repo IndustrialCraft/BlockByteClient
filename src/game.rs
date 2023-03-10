@@ -17,7 +17,6 @@ pub struct ClientPlayer {
     velocity: Vec3,
     pub pitch_deg: f32,
     yaw_deg: f32,
-    can_jump: bool,
     shifting: bool,
 }
 impl ClientPlayer {
@@ -70,8 +69,9 @@ impl ClientPlayer {
             },
         );
         self.shifting = keys.contains(&Keycode::LShift);
-        if keys.contains(&Keycode::Space) && self.can_jump {
-            self.can_jump = false;
+        if keys.contains(&Keycode::Space)
+            && ClientPlayer::collides_at(position.add(0., -0.1, 0.), world, self.shifting)
+        {
             self.velocity.y = 0.8;
         }
         if !(move_vector.x == 0.0 && move_vector.y == 0.0 && move_vector.z == 0.0) {
@@ -87,9 +87,6 @@ impl ClientPlayer {
             self.velocity.x = 0.;
         }
         if ClientPlayer::collides_at(position.add(0., total_move.y, 0.), world, self.shifting) {
-            if total_move.y < 0f32 {
-                self.can_jump = true;
-            }
             total_move.y = 0.;
             self.velocity.y = 0.;
         }
@@ -125,7 +122,6 @@ impl ClientPlayer {
             velocity: Vec3::new(0., 0., 0.),
             pitch_deg: 0.0,
             yaw_deg: 0.0,
-            can_jump: true,
             shifting: false,
         }
     }
