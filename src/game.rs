@@ -94,6 +94,30 @@ impl ClientPlayer {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
+        if self.shifting
+            && ClientPlayer::collides_at(position.add(0., -0.1, 0.), world, self.shifting)
+        {
+            if total_move.x != 0.
+                && !ClientPlayer::collides_at(
+                    position.add(total_move.x, -0.1, 0.),
+                    world,
+                    self.shifting,
+                )
+            {
+                total_move.x = 0.;
+                self.velocity.x = 0.;
+            }
+            if total_move.z != 0.
+                && !ClientPlayer::collides_at(
+                    position.add(0., -0.1, total_move.z),
+                    world,
+                    self.shifting,
+                )
+            {
+                total_move.z = 0.;
+                self.velocity.z = 0.;
+            }
+        }
         self.position += total_move;
         self.velocity.y -= delta_time * 20f32
     }
