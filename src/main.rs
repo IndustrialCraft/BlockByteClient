@@ -596,7 +596,7 @@ fn main() {
             window
                 .set_title(
                     format!(
-                        "BlockByte {} {} {} {}",
+                        "BlockByte {:.1} {:.1} {:.1} {}",
                         camera.position.x, camera.position.y, camera.position.z, last_frame_time
                     )
                     .as_str(),
