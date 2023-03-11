@@ -172,7 +172,13 @@ impl GUIQuad {
 }
 
 pub enum GUIComponent {
-    ImageComponent(f32, f32, AtlassedTexture, Color),
+    ImageComponent(
+        f32,
+        f32,
+        AtlassedTexture,
+        Color,
+        Option<(f32, f32, f32, f32)>,
+    ),
     TextComponent(f32, String, Color),
     SlotComponent(f32, Option<ItemSlot>, Color),
 }
@@ -187,9 +193,26 @@ impl GUIComponent {
         y: f32,
     ) {
         match self {
-            Self::ImageComponent(w, h, texture, color) => {
-                quads.push(GUIQuad::new(x, y, *w, *h, &texture, *color));
-            }
+            Self::ImageComponent(w, h, texture, color, slice) => match slice {
+                Some(slice) => {
+                    let uv0 = texture.map((slice.0, slice.1));
+                    let uv1 = texture.map((slice.2, slice.3));
+                    quads.push(GUIQuad {
+                        x,
+                        y,
+                        w: *w,
+                        h: *h,
+                        color: *color,
+                        u1: uv0.0,
+                        v1: uv0.1,
+                        u2: uv1.0,
+                        v2: uv1.1,
+                    });
+                }
+                None => {
+                    quads.push(GUIQuad::new(x, y, *w, *h, &texture, *color));
+                }
+            },
             Self::TextComponent(scale, text, color) => {
                 let mut y_cnt = 1;
                 for text in text.split('\n') {
@@ -227,6 +250,7 @@ impl GUIComponent {
                     size + (2. * border),
                     texture_atlas.get("slot").unwrap().clone(),
                     *color,
+                    None,
                 )
                 .add_quads(
                     quads,
@@ -256,6 +280,7 @@ impl GUIComponent {
                             b: 1.,
                             a: 1.,
                         },
+                        None,
                     )
                     .add_quads(
                         quads,
@@ -291,7 +316,7 @@ impl GUIComponent {
     }
     pub fn get_width(&self) -> f32 {
         match self {
-            Self::ImageComponent(w, _, _, _) => *w,
+            Self::ImageComponent(w, _, _, _, _) => *w,
             Self::TextComponent(scale, text, _) => text
                 .split('\n')
                 .map(|t| (t.len() as f32) * 0.06 * scale)
@@ -302,7 +327,7 @@ impl GUIComponent {
     }
     pub fn get_height(&self) -> f32 {
         match self {
-            Self::ImageComponent(_, h, _, _) => *h,
+            Self::ImageComponent(_, h, _, _, _) => *h,
             Self::TextComponent(scale, text, _) => {
                 text.split('\n').count() as f32 * 0.08f32 * scale
             }
@@ -365,6 +390,7 @@ impl GUI {
                 b: 1.,
                 a: 1.,
             },
+            None,
         )
         .add_quads(
             &mut quads,
@@ -440,7 +466,7 @@ pub struct Color {
 }
 
 #[derive(Clone, Copy)]
-struct ItemSlot {
+pub struct ItemSlot {
     item: u32,
     count: u16,
 }
