@@ -293,20 +293,13 @@ fn main() {
                     timestamp: _,
                     window_id: _,
                     which: _,
-                    x: _,
+                    x,
                     y,
                     direction: _,
                 } => {
-                    let mut current_slot = (gui.selected_slot as i32) - y;
-                    if current_slot < 0 {
-                        current_slot = 8;
-                    }
-                    if current_slot > 8 {
-                        current_slot = 0;
-                    }
                     socket
                         .write_message(tungstenite::Message::Binary(
-                            util::NetworkMessageC2S::SelectSlot(current_slot as u8).to_data(),
+                            util::NetworkMessageC2S::MouseScroll(x, y).to_data(),
                         ))
                         .unwrap();
                 }
@@ -376,7 +369,7 @@ fn main() {
                         break 'main_loop;
                     }
                     keys_held.insert(keycode.unwrap());
-                    let keycode_num = keycode.unwrap() as i32;
+                    /*let keycode_num = keycode.unwrap() as i32;
                     if keycode_num >= 49 && keycode_num <= 57 {
                         socket
                             .write_message(tungstenite::Message::Binary(
@@ -384,7 +377,7 @@ fn main() {
                                     .to_data(),
                             ))
                             .unwrap();
-                    }
+                    }*/
                 }
                 Event::KeyUp {
                     timestamp: _,

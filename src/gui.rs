@@ -183,6 +183,98 @@ pub enum GUIComponent {
     SlotComponent(f32, Option<ItemSlot>, Color),
 }
 impl GUIComponent {
+    pub fn from_json(
+        json: &JsonValue,
+        texture_atlas: &HashMap<String, AtlassedTexture>,
+    ) -> GUIComponent {
+        match json["element_type"].as_str().unwrap() {
+            "image" => GUIComponent::ImageComponent(
+                json["w"].as_f32().unwrap(),
+                json["h"].as_f32().unwrap(),
+                texture_atlas
+                    .get(json["texture"].as_str().unwrap())
+                    .unwrap()
+                    .clone(),
+                Color {
+                    r: 1.,
+                    g: 1.,
+                    b: 1.,
+                    a: 1.,
+                },
+                None,
+            ),
+            "slot" => GUIComponent::SlotComponent(
+                1.,
+                None,
+                Color {
+                    r: 1.,
+                    g: 1.,
+                    b: 1.,
+                    a: 1.,
+                },
+            ),
+            text => panic!("unknown element type {}", text),
+        }
+    }
+    pub fn set_data(&mut self, data_type: &str, json: &json::JsonValue) {
+        match self {
+            Self::ImageComponent(w, h, texture, color, slice) => match data_type {
+                "color" => {
+                    let json_color = &json["color"];
+                    *color = Color {
+                        r: json_color[0].as_f32().unwrap(),
+                        g: json_color[1].as_f32().unwrap(),
+                        b: json_color[2].as_f32().unwrap(),
+                        a: json_color[3].as_f32().unwrap(),
+                    };
+                }
+                "dimension" => {
+                    let json_dimensions = &json["dimension"];
+                    *w = json_dimensions[0].as_f32().unwrap();
+                    *h = json_dimensions[1].as_f32().unwrap();
+                }
+                _ => {}
+            },
+            Self::TextComponent(scale, text, color) => match data_type {
+                "color" => {
+                    let json_color = &json["color"];
+                    *color = Color {
+                        r: json_color[0].as_f32().unwrap(),
+                        g: json_color[1].as_f32().unwrap(),
+                        b: json_color[2].as_f32().unwrap(),
+                        a: json_color[3].as_f32().unwrap(),
+                    };
+                }
+                "text" => {
+                    *text = json["text"].as_str().unwrap().to_string();
+                }
+                _ => {}
+            },
+            GUIComponent::SlotComponent(size, slot, color) => match data_type {
+                "color" => {
+                    let json_color = &json["color"];
+                    *color = Color {
+                        r: json_color[0].as_f32().unwrap(),
+                        g: json_color[1].as_f32().unwrap(),
+                        b: json_color[2].as_f32().unwrap(),
+                        a: json_color[3].as_f32().unwrap(),
+                    };
+                }
+                "item" => {
+                    let json_slot = &json["item"];
+                    *slot = if json_slot.is_null() {
+                        None
+                    } else {
+                        Some(ItemSlot {
+                            item: json_slot["item"].as_u32().unwrap(),
+                            count: json_slot["count"].as_u16().unwrap(),
+                        })
+                    }
+                }
+                _ => {}
+            },
+        }
+    }
     pub fn add_quads(
         &self,
         quads: &mut Vec<GUIQuad>,
@@ -342,7 +434,7 @@ pub struct GUI {
     item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: HashMap<String, AtlassedTexture>,
-    pub selected_slot: u8,
+    elements: HashMap<String, GUIElement>,
 }
 impl GUI {
     pub fn new(
@@ -357,78 +449,51 @@ impl GUI {
             item_renderer,
             slots: vec![None; 9],
             texture_atlas,
-            selected_slot: 0,
+            elements: HashMap::new(),
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
         match data["type"].as_str().unwrap() {
-            "setItem" => {
-                let slot = data["slot"].as_u32().unwrap();
-                let item = data["item"].as_u32().unwrap();
-                let count = data["count"].as_u16().unwrap();
-                self.slots[slot as usize] = Some(ItemSlot { item, count });
+            "setElement" => {
+                let id = data["id"].as_str().unwrap().to_string();
+                if !data["element_type"].is_null() {
+                    let component = GUIComponent::from_json(&data, &self.texture_atlas);
+                    let element = GUIElement {
+                        component,
+                        x: data["x"].as_f32().unwrap(),
+                        y: data["y"].as_f32().unwrap(),
+                    };
+                    self.elements.insert(id, element);
+                } else {
+                    self.elements.remove(&id);
+                }
             }
-            "removeItem" => {
-                let slot = data["slot"].as_u32().unwrap();
-                self.slots[slot as usize] = None;
-            }
-            "selectSlot" => {
-                self.selected_slot = data["slot"].as_u8().unwrap();
+            "editElement" => {
+                let id = data["id"].as_str().unwrap().to_string();
+                if let Some(element) = self.elements.get_mut(&id) {
+                    let data_type = data["data_type"].as_str().unwrap();
+                    if data_type == "position" {
+                        let position = &data["position"];
+                        element.x = position[0].as_f32().unwrap();
+                        element.y = position[1].as_f32().unwrap();
+                    } else {
+                        element.component.set_data(data_type, &data);
+                    }
+                }
             }
             _ => {}
         }
     }
     fn to_quad_list(&self) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
-        GUIComponent::ImageComponent(
-            0.1,
-            0.1,
-            self.texture_atlas.get("cursor").unwrap().clone(),
-            Color {
-                r: 1.,
-                g: 1.,
-                b: 1.,
-                a: 1.,
-            },
-            None,
-        )
-        .add_quads(
-            &mut quads,
-            &self.font_renderer,
-            &self.texture_atlas,
-            &self.item_renderer,
-            -0.05,
-            -0.05,
-        );
-        for i in 0..9u8 {
-            let x = ((i as f32) * 0.13) - 0.7;
-            let y = -0.5;
-            GUIComponent::SlotComponent(
-                1.,
-                self.slots.get(i as usize).unwrap().clone(),
-                if i == self.selected_slot {
-                    Color {
-                        r: 1.,
-                        g: 0.,
-                        b: 0.,
-                        a: 1.,
-                    }
-                } else {
-                    Color {
-                        r: 1.,
-                        b: 1.,
-                        g: 1.,
-                        a: 1.,
-                    }
-                },
-            )
-            .add_quads(
+        for element in &self.elements {
+            element.1.component.add_quads(
                 &mut quads,
                 &self.font_renderer,
                 &self.texture_atlas,
                 &self.item_renderer,
-                x,
-                y,
+                element.1.x,
+                element.1.y,
             );
         }
         quads
@@ -455,6 +520,12 @@ impl TextRenderer {
         let uv2 = self.texture.map(((index + 1f32) * 5f32, 7f32));
         (uv1.0, uv1.1, uv2.0, uv2.1)
     }
+}
+
+pub struct GUIElement {
+    pub component: GUIComponent,
+    pub x: f32,
+    pub y: f32,
 }
 
 #[derive(Clone, Copy)]
