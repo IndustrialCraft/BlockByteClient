@@ -428,13 +428,13 @@ impl GUIComponent {
     }
 }
 pub struct GUI {
-    cursor: (f32, f32),
     renderer: GUIRenderer,
     font_renderer: TextRenderer,
     item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: HashMap<String, AtlassedTexture>,
     elements: HashMap<String, GUIElement>,
+    cursor: Option<(AtlassedTexture, f32, f32, f32, f32, bool)>,
 }
 impl GUI {
     pub fn new(
@@ -443,7 +443,7 @@ impl GUI {
         texture_atlas: HashMap<String, AtlassedTexture>,
     ) -> Self {
         Self {
-            cursor: (0., 0.),
+            cursor: None,
             renderer: GUIRenderer::new(),
             font_renderer: text_renderer,
             item_renderer,
@@ -481,6 +481,32 @@ impl GUI {
                     }
                 }
             }
+            "setCursor" => {
+                let texture = &data["texture"];
+                if texture.is_null() {
+                    self.cursor = None;
+                } else {
+                    self.cursor = Some((
+                        self.texture_atlas
+                            .get(texture.as_str().unwrap())
+                            .unwrap()
+                            .clone(),
+                        0.,
+                        0.,
+                        data["width"].as_f32().unwrap(),
+                        data["height"].as_f32().unwrap(),
+                        true,
+                    ));
+                }
+            }
+            "setCursorLock" => {
+                let lock = data["lock"].as_bool().unwrap();
+                if let Some(cursor) = &mut self.cursor {
+                    cursor.5 = lock;
+                    cursor.1 = 0.;
+                    cursor.2 = 0.;
+                }
+            }
             _ => {}
         }
     }
@@ -495,6 +521,21 @@ impl GUI {
                 element.1.x,
                 element.1.y,
             );
+        }
+        if let Some(cursor) = &self.cursor {
+            quads.push(GUIQuad::new(
+                cursor.1 - (cursor.3 / 2.),
+                cursor.2 - (cursor.4 / 2.),
+                cursor.3,
+                cursor.4,
+                &cursor.0,
+                Color {
+                    r: 1.,
+                    g: 1.,
+                    b: 1.,
+                    a: 1.,
+                },
+            ));
         }
         quads
     }
