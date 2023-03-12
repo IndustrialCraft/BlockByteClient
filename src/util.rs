@@ -131,6 +131,7 @@ pub enum NetworkMessageC2S {
     RightClickBlock(i32, i32, i32, Face, bool),
     PlayerPosition(f32, f32, f32, bool, f32),
     MouseScroll(i32, i32),
+    Keyboard(i32, bool, bool),
 }
 impl NetworkMessageC2S {
     pub fn to_data(&self) -> Vec<u8> {
@@ -162,6 +163,12 @@ impl NetworkMessageC2S {
                 data.write_be(3u8).unwrap();
                 data.write_be(*x).unwrap();
                 data.write_be(*y).unwrap();
+            }
+            Self::Keyboard(key, down, repeat) => {
+                data.write_be(4u8).unwrap();
+                data.write_be(*key).unwrap();
+                data.write_be(*down).unwrap();
+                data.write_be(*repeat).unwrap();
             }
         };
         data

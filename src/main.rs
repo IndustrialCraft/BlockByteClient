@@ -363,21 +363,18 @@ fn main() {
                     keycode,
                     scancode: _,
                     keymod: _,
-                    repeat: _,
+                    repeat,
                 } => {
                     if keycode.unwrap() == Keycode::Escape {
                         break 'main_loop;
                     }
                     keys_held.insert(keycode.unwrap());
-                    /*let keycode_num = keycode.unwrap() as i32;
-                    if keycode_num >= 49 && keycode_num <= 57 {
-                        socket
-                            .write_message(tungstenite::Message::Binary(
-                                util::NetworkMessageC2S::SelectSlot((keycode_num as u8) - 49u8)
-                                    .to_data(),
-                            ))
-                            .unwrap();
-                    }*/
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, true, repeat)
+                                .to_data(),
+                        ))
+                        .unwrap();
                 }
                 Event::KeyUp {
                     timestamp: _,
@@ -385,9 +382,14 @@ fn main() {
                     keycode,
                     scancode: _,
                     keymod: _,
-                    repeat: _,
+                    repeat,
                 } => {
                     keys_held.remove(&keycode.unwrap());
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat).to_data(),
+                        ))
+                        .unwrap();
                 }
                 Event::Window {
                     timestamp: _,
