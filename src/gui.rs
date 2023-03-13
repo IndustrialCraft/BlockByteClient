@@ -427,20 +427,25 @@ impl GUIComponent {
         }
     }
 }
-pub struct GUI {
+pub struct GUI<'a> {
     renderer: GUIRenderer,
     font_renderer: TextRenderer,
     item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: HashMap<String, AtlassedTexture>,
     elements: HashMap<String, GUIElement>,
-    cursor: Option<(AtlassedTexture, f32, f32, f32, f32, bool)>,
+    cursor: Option<(AtlassedTexture, f32, f32, f32, f32)>,
+    sdl: &'a sdl2::Sdl,
+    mouse_locked: bool,
+    pub size: (u32, u32),
 }
-impl GUI {
+impl<'a> GUI<'a> {
     pub fn new(
         text_renderer: TextRenderer,
         item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
         texture_atlas: HashMap<String, AtlassedTexture>,
+        sdl: &'a sdl2::Sdl,
+        size: (u32, u32),
     ) -> Self {
         Self {
             cursor: None,
@@ -450,6 +455,9 @@ impl GUI {
             slots: vec![None; 9],
             texture_atlas,
             elements: HashMap::new(),
+            sdl,
+            mouse_locked: false,
+            size,
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -495,17 +503,13 @@ impl GUI {
                         0.,
                         data["width"].as_f32().unwrap(),
                         data["height"].as_f32().unwrap(),
-                        true,
                     ));
                 }
             }
             "setCursorLock" => {
                 let lock = data["lock"].as_bool().unwrap();
-                if let Some(cursor) = &mut self.cursor {
-                    cursor.5 = lock;
-                    cursor.1 = 0.;
-                    cursor.2 = 0.;
-                }
+                self.sdl.mouse().set_relative_mouse_mode(lock);
+                self.mouse_locked = lock;
             }
             _ => {}
         }
@@ -538,6 +542,17 @@ impl GUI {
             ));
         }
         quads
+    }
+    pub fn on_mouse_move(&mut self, x: i32, y: i32) -> bool {
+        if !self.mouse_locked {
+            if let Some(cursor) = &mut self.cursor {
+                let half_width = (self.size.0 as f32) / 2.;
+                let half_height = (self.size.1 as f32) / 2.;
+                cursor.1 = ((x as f32) - half_width) / half_width;
+                cursor.2 = -((y as f32) - half_height) / half_height;
+            }
+        }
+        !self.mouse_locked
     }
     pub fn render(&mut self, shader: &glwrappers::Shader) {
         self.renderer.render(shader, self.to_quad_list());

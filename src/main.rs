@@ -61,7 +61,6 @@ fn main() {
     let mut last_time = 0f32;
     let mut keys_held: std::collections::HashSet<sdl2::keyboard::Keycode> =
         std::collections::HashSet::new();
-    sdl.mouse().set_relative_mouse_mode(true);
     unsafe {
         ogl33::load_gl_with(|f_name| {
             sdl2::sys::SDL_GL_GetProcAddress(f_name as *const c_char) as *const c_void
@@ -135,6 +134,8 @@ fn main() {
         },
         item_registry.clone(),
         texture_atlas.clone(),
+        &sdl,
+        (win_width, win_height),
     );
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
@@ -308,16 +309,18 @@ fn main() {
                     window_id: _,
                     which: _,
                     mousestate: _,
-                    x: _,
-                    y: _,
+                    x,
+                    y,
                     xrel,
                     yrel,
                 } => {
-                    let sensitivity = 0.5f32;
-                    camera.update_orientation(
-                        (-yrel as f32) * sensitivity,
-                        (-xrel as f32) * sensitivity,
-                    );
+                    if !gui.on_mouse_move(x, y) {
+                        let sensitivity = 0.5f32;
+                        camera.update_orientation(
+                            (-yrel as f32) * sensitivity,
+                            (-xrel as f32) * sensitivity,
+                        );
+                    }
                 }
                 Event::MouseButtonDown {
                     timestamp: _,
@@ -400,6 +403,7 @@ fn main() {
                     WindowEvent::Resized(width, height) => {
                         win_width = width as u32;
                         win_height = height as u32;
+                        gui.size = (win_width, win_height);
                         unsafe {
                             ogl33::glViewport(0, 0, win_width as i32, win_height as i32);
                         }
