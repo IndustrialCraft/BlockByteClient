@@ -510,6 +510,10 @@ impl<'a> GUI<'a> {
                 let lock = data["lock"].as_bool().unwrap();
                 self.sdl.mouse().set_relative_mouse_mode(lock);
                 self.mouse_locked = lock;
+                if let Some(cursor) = &mut self.cursor {
+                    cursor.1 = 0.;
+                    cursor.2 = 0.;
+                }
             }
             "removeContainer" => {
                 let container = data["container"].as_str().unwrap();
