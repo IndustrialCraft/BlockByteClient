@@ -203,6 +203,16 @@ impl GUIComponent {
                 },
                 None,
             ),
+            "text" => GUIComponent::TextComponent(
+                1.,
+                String::new(),
+                Color {
+                    r: 1.,
+                    g: 1.,
+                    b: 1.,
+                    a: 1.,
+                },
+            ),
             "slot" => GUIComponent::SlotComponent(
                 1.,
                 None,
