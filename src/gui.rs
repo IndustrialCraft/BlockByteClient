@@ -511,6 +511,11 @@ impl<'a> GUI<'a> {
                 self.sdl.mouse().set_relative_mouse_mode(lock);
                 self.mouse_locked = lock;
             }
+            "removeContainer" => {
+                let container = data["container"].as_str().unwrap();
+                self.elements
+                    .drain_filter(|id, _| id.starts_with(container));
+            }
             _ => {}
         }
     }

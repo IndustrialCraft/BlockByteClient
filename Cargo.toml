@@ -22,3 +22,4 @@ endio = "0.1.0"
 json = "0.12.4"
 uuid = {version = "1.3.0", features = ["v4","fast-rng","macro-diagnostics"]}
 libflate = "1.3.0"
+
