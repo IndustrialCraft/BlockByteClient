@@ -387,7 +387,8 @@ fn main() {
                     keys_held.remove(&keycode.unwrap());
                     socket
                         .write_message(tungstenite::Message::Binary(
-                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat).to_data(),
+                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat)
+                                .to_data(),
                         ))
                         .unwrap();
                 }
@@ -604,7 +605,7 @@ fn main() {
                         camera.position.y,
                         camera.position.z,
                         camera.is_shifting(),
-                        camera.pitch_deg,
+                        camera.yaw_deg,
                     )
                     .to_data(),
                 ))

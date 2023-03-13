@@ -16,7 +16,7 @@ pub struct ClientPlayer {
     pub position: Vec3,
     velocity: Vec3,
     pub pitch_deg: f32,
-    yaw_deg: f32,
+    pub yaw_deg: f32,
     shifting: bool,
     shifting_animation: f32,
 }
