@@ -600,7 +600,6 @@ impl<'a> GUI<'a> {
                     }
                 }
                 if let Some(id) = id {
-                    println!("id: {}", id);
                     socket
                         .write_message(tungstenite::Message::Binary(
                             NetworkMessageC2S::GuiClick(id, crate::util::MouseButton::LEFT)

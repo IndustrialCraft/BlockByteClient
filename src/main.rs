@@ -53,7 +53,7 @@ fn main() {
             .build()
             .unwrap(),
     );
-    let _gl_context = { window.borrow().gl_create_context().unwrap() };
+    let _gl_context = { window.borrow().gl_create_context().unwrap() };//do not drop
 
     let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
         x: 0f32,
