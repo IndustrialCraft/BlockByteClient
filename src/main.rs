@@ -332,6 +332,9 @@ fn main() {
                     x: _,
                     y: _,
                 } => {
+                    if mouse_btn == MouseButton::Middle {
+                        break 'main_loop;
+                    }
                     if mouse_btn == MouseButton::Left {
                         if !gui.on_left_click(&mut socket) {
                             if let Some((position, _id, _face)) = raycast_result {
@@ -372,7 +375,12 @@ fn main() {
                     repeat,
                 } => {
                     if keycode.unwrap() == Keycode::Escape {
-                        break 'main_loop;
+                        socket
+                            .write_message(tungstenite::Message::Binary(
+                                NetworkMessageC2S::GuiClose
+                                    .to_data(),
+                            ))
+                            .unwrap();
                     }
                     keys_held.insert(keycode.unwrap());
                     socket

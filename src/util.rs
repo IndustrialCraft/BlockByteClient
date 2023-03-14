@@ -133,6 +133,7 @@ pub enum NetworkMessageC2S {
     MouseScroll(i32, i32),
     Keyboard(i32, bool, bool),
     GuiClick(String, MouseButton),
+    GuiClose,
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -181,6 +182,9 @@ impl NetworkMessageC2S {
                 data.write_be(5u8).unwrap();
                 write_string(&mut data, id);
                 data.write_be((*button) as u8).unwrap();
+            }
+            Self::GuiClose => {
+                data.write_be(6u8).unwrap();
             }
         };
         data
