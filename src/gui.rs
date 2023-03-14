@@ -509,6 +509,11 @@ impl<'a> GUI<'a> {
             }
             "setCursor" => {
                 let texture = &data["texture"];
+                let prev_pos = if let Some(cursor) = self.cursor {
+                    (cursor.1, cursor.2)
+                } else {
+                    (0., 0.)
+                };
                 if texture.is_null() {
                     self.cursor = None;
                 } else {
@@ -517,8 +522,8 @@ impl<'a> GUI<'a> {
                             .get(texture.as_str().unwrap())
                             .unwrap()
                             .clone(),
-                        0.,
-                        0.,
+                        prev_pos.0,
+                        prev_pos.1,
                         data["width"].as_f32().unwrap(),
                         data["height"].as_f32().unwrap(),
                     ));
