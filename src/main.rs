@@ -333,15 +333,17 @@ fn main() {
                     y: _,
                 } => {
                     if mouse_btn == MouseButton::Left {
-                        if let Some((position, _id, _face)) = raycast_result {
-                            socket
-                                .write_message(tungstenite::Message::Binary(
-                                    NetworkMessageC2S::LeftClickBlock(
-                                        position.x, position.y, position.z,
-                                    )
-                                    .to_data(),
-                                ))
-                                .unwrap();
+                        if !gui.on_left_click(&mut socket) {
+                            if let Some((position, _id, _face)) = raycast_result {
+                                socket
+                                    .write_message(tungstenite::Message::Binary(
+                                        NetworkMessageC2S::LeftClickBlock(
+                                            position.x, position.y, position.z,
+                                        )
+                                        .to_data(),
+                                    ))
+                                    .unwrap();
+                            }
                         }
                     }
                     if mouse_btn == MouseButton::Right {

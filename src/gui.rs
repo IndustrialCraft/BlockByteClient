@@ -1,11 +1,12 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, net::TcpStream, rc::Rc};
 
 use json::JsonValue;
+use tungstenite::WebSocket;
 
 use crate::{
     game::{self, AtlassedTexture},
     glwrappers,
-    util::ItemRenderData,
+    util::{ItemRenderData, NetworkMessageC2S},
 };
 
 pub struct GUIRenderer {
@@ -316,7 +317,7 @@ impl GUIComponent {
                 }
             },
             Self::TextComponent(scale, text, color) => {
-                let mut y_cnt = 1;
+                let mut y_cnt = 0;
                 for text in text.split('\n') {
                     let mut x_cnt = 0;
                     for ch in text.bytes() {
@@ -424,7 +425,11 @@ impl GUIComponent {
                 .map(|t| (t.len() as f32) * 0.06 * scale)
                 .reduce(f32::max)
                 .unwrap_or(0.),
-            Self::SlotComponent(_, _, _) => todo!(),
+            Self::SlotComponent(size, _, _) => {
+                let size = size * 0.1;
+                let border = size * 0.1;
+                size + (2. * border)
+            }
         }
     }
     pub fn get_height(&self) -> f32 {
@@ -433,7 +438,7 @@ impl GUIComponent {
             Self::TextComponent(scale, text, _) => {
                 text.split('\n').count() as f32 * 0.08f32 * scale
             }
-            Self::SlotComponent(_, _, _) => todo!(),
+            Self::SlotComponent(_, _, _) => self.get_width(),
         }
     }
 }
@@ -569,6 +574,32 @@ impl<'a> GUI<'a> {
                 let half_height = (self.size.1 as f32) / 2.;
                 cursor.1 = ((x as f32) - half_width) / half_width;
                 cursor.2 = -((y as f32) - half_height) / half_height;
+            }
+        }
+        !self.mouse_locked
+    }
+    pub fn on_left_click(&mut self, socket: &mut WebSocket<TcpStream>) -> bool {
+        if !self.mouse_locked {
+            if let Some(cursor) = self.cursor {
+                let mut id = None;
+                for element in &self.elements {
+                    if element.1.x <= cursor.1
+                        && element.1.x + element.1.component.get_width() >= cursor.1
+                        && element.1.y <= cursor.2
+                        && element.1.y + element.1.component.get_height() >= cursor.2
+                    {
+                        id = Some(element.0.clone());
+                    }
+                }
+                if let Some(id) = id {
+                    println!("id: {}", id);
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::GuiClick(id, crate::util::MouseButton::LEFT)
+                                .to_data(),
+                        ))
+                        .unwrap();
+                }
             }
         }
         !self.mouse_locked

@@ -32,7 +32,7 @@ pub enum NetworkMessageS2C {
     ) = 6,
     GuiData(json::JsonValue) = 7,
 }
-fn write_string(data: &mut Vec<u8>, value: String) {
+fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
     for ch in value.as_bytes() {
         data.write_be(*ch).unwrap();
@@ -132,6 +132,13 @@ pub enum NetworkMessageC2S {
     PlayerPosition(f32, f32, f32, bool, f32),
     MouseScroll(i32, i32),
     Keyboard(i32, bool, bool),
+    GuiClick(String, MouseButton),
+}
+#[repr(u8)]
+#[derive(Clone, Copy)]
+pub enum MouseButton {
+    LEFT = 0,
+    RIGHT = 1,
 }
 impl NetworkMessageC2S {
     pub fn to_data(&self) -> Vec<u8> {
@@ -169,6 +176,11 @@ impl NetworkMessageC2S {
                 data.write_be(*key).unwrap();
                 data.write_be(*down).unwrap();
                 data.write_be(*repeat).unwrap();
+            }
+            Self::GuiClick(id, button) => {
+                data.write_be(5u8).unwrap();
+                write_string(&mut data, id);
+                data.write_be((*button) as u8).unwrap();
             }
         };
         data
