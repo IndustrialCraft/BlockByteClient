@@ -44,21 +44,23 @@ fn main() {
     socket.get_mut().set_nonblocking(true).unwrap();
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
-    let mut window = video_subsystem
-        .window("Game", 900, 700)
-        .opengl()
-        //.fullscreen_desktop()
-        .resizable()
-        .build()
-        .unwrap();
-    let _gl_context = window.gl_create_context().unwrap();
+    let window = RefCell::new(
+        video_subsystem
+            .window("Game", 900, 700)
+            .opengl()
+            //.fullscreen_desktop()
+            .resizable()
+            .build()
+            .unwrap(),
+    );
+    let _gl_context = { window.borrow().gl_create_context().unwrap() };
 
     let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
         x: 0f32,
         y: 50f32,
         z: 0f32,
     });
-    let (mut win_width, mut win_height) = window.size();
+    let (mut win_width, mut win_height) = { window.borrow().size() };
     let mut last_time = 0f32;
     let mut keys_held: std::collections::HashSet<sdl2::keyboard::Keycode> =
         std::collections::HashSet::new();
@@ -137,6 +139,7 @@ fn main() {
         texture_atlas.clone(),
         &sdl,
         (win_width, win_height),
+        &window,
     );
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
@@ -377,8 +380,7 @@ fn main() {
                     if keycode.unwrap() == Keycode::Escape {
                         socket
                             .write_message(tungstenite::Message::Binary(
-                                NetworkMessageC2S::GuiClose
-                                    .to_data(),
+                                NetworkMessageC2S::GuiClose.to_data(),
                             ))
                             .unwrap();
                     }
@@ -604,15 +606,21 @@ fn main() {
             }
 
             camera.update_position(&keys_held, delta_time, &world);
-            window
-                .set_title(
-                    format!(
-                        "BlockByte {:.1} {:.1} {:.1} {}",
-                        camera.position.x, camera.position.y, camera.position.z, last_frame_time
+            {
+                window
+                    .borrow_mut()
+                    .set_title(
+                        format!(
+                            "BlockByte {:.1} {:.1} {:.1} {}",
+                            camera.position.x,
+                            camera.position.y,
+                            camera.position.z,
+                            last_frame_time
+                        )
+                        .as_str(),
                     )
-                    .as_str(),
-                )
-                .unwrap();
+                    .unwrap();
+            }
             socket
                 .write_message(tungstenite::Message::Binary(
                     NetworkMessageC2S::PlayerPosition(
@@ -689,7 +697,9 @@ fn main() {
             }
 
             gui.render(&gui_shader);
-            window.gl_swap_window();
+            {
+                window.borrow().gl_swap_window();
+            }
             last_frame_time =
                 (1000000f64 / (render_start_time.elapsed().as_micros() as f64)) as u32 as f32;
         }

@@ -453,6 +453,7 @@ pub struct GUI<'a> {
     sdl: &'a sdl2::Sdl,
     mouse_locked: bool,
     pub size: (u32, u32),
+    window: &'a RefCell<sdl2::video::Window>,
 }
 impl<'a> GUI<'a> {
     pub fn new(
@@ -461,6 +462,7 @@ impl<'a> GUI<'a> {
         texture_atlas: HashMap<String, AtlassedTexture>,
         sdl: &'a sdl2::Sdl,
         size: (u32, u32),
+        window: &'a RefCell<sdl2::video::Window>,
     ) -> Self {
         Self {
             cursor: None,
@@ -473,6 +475,7 @@ impl<'a> GUI<'a> {
             sdl,
             mouse_locked: false,
             size,
+            window,
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -528,6 +531,11 @@ impl<'a> GUI<'a> {
                 if let Some(cursor) = &mut self.cursor {
                     cursor.1 = 0.;
                     cursor.2 = 0.;
+                    self.sdl.mouse().warp_mouse_in_window(
+                        &self.window.borrow(),
+                        (self.size.0 / 2) as i32,
+                        (self.size.1 / 2) as i32,
+                    );
                 }
             }
             "removeContainer" => {
