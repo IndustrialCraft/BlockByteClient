@@ -181,7 +181,7 @@ pub enum GUIComponent {
         Option<(f32, f32, f32, f32)>,
     ),
     TextComponent(f32, String, Color),
-    SlotComponent(f32, Option<ItemSlot>, Color),
+    SlotComponent(f32, Option<ItemSlot>, Color, bool),
 }
 impl GUIComponent {
     pub fn from_json(
@@ -233,6 +233,7 @@ impl GUIComponent {
                         b: 1.,
                         a: 1.,
                     },
+                    json["background"].as_bool().unwrap_or(true),
                 )
             }
             text => panic!("unknown element type {}", text),
@@ -272,7 +273,7 @@ impl GUIComponent {
                 }
                 _ => {}
             },
-            GUIComponent::SlotComponent(size, slot, color) => match data_type {
+            GUIComponent::SlotComponent(size, slot, color, background) => match data_type {
                 "color" => {
                     let json_color = &json["color"];
                     *color = Color {
@@ -292,6 +293,9 @@ impl GUIComponent {
                             count: json_slot["count"].as_u16().unwrap(),
                         })
                     }
+                }
+                "background" => {
+                    *background = json["background"].as_bool().unwrap();
                 }
                 _ => {}
             },
@@ -356,24 +360,26 @@ impl GUIComponent {
                     y_cnt += 1;
                 }
             }
-            Self::SlotComponent(size, item, color) => {
+            Self::SlotComponent(size, item, color, background) => {
                 let size = size * 0.1;
                 let border = size * 0.1;
-                GUIComponent::ImageComponent(
-                    size + (2. * border),
-                    size + (2. * border),
-                    texture_atlas.get("slot").unwrap().clone(),
-                    *color,
-                    None,
-                )
-                .add_quads(
-                    quads,
-                    text_renderer,
-                    texture_atlas,
-                    item_renderer,
-                    x - border,
-                    y - border,
-                );
+                if *background {
+                    GUIComponent::ImageComponent(
+                        size + (2. * border),
+                        size + (2. * border),
+                        texture_atlas.get("slot").unwrap().clone(),
+                        *color,
+                        None,
+                    )
+                    .add_quads(
+                        quads,
+                        text_renderer,
+                        texture_atlas,
+                        item_renderer,
+                        x - border,
+                        y - border,
+                    );
+                }
                 if let Some(slot) = item {
                     GUIComponent::ImageComponent(
                         size,
@@ -436,9 +442,9 @@ impl GUIComponent {
                 .map(|t| (t.len() as f32) * 0.06 * scale)
                 .reduce(f32::max)
                 .unwrap_or(0.),
-            Self::SlotComponent(size, _, _) => {
+            Self::SlotComponent(size, _, _, border) => {
                 let size = size * 0.1;
-                let border = size * 0.1;
+                let border = if *border { size * 0.1 } else { 0. };
                 size + (2. * border)
             }
         }
@@ -449,7 +455,7 @@ impl GUIComponent {
             Self::TextComponent(scale, text, _) => {
                 text.split('\n').count() as f32 * 0.08f32 * scale
             }
-            Self::SlotComponent(_, _, _) => self.get_width(),
+            Self::SlotComponent(_, _, _, _) => self.get_width(),
         }
     }
 }
