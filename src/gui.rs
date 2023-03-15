@@ -214,16 +214,27 @@ impl GUIComponent {
                     a: 1.,
                 },
             ),
-            "slot" => GUIComponent::SlotComponent(
-                1.,
-                None,
-                Color {
-                    r: 1.,
-                    g: 1.,
-                    b: 1.,
-                    a: 1.,
-                },
-            ),
+            "slot" => {
+                let json_slot = &json["item"];
+                let item = if json_slot.is_null() {
+                    None
+                } else {
+                    Some(ItemSlot {
+                        item: json_slot["item"].as_u32().unwrap(),
+                        count: json_slot["count"].as_u16().unwrap(),
+                    })
+                };
+                GUIComponent::SlotComponent(
+                    1.,
+                    item,
+                    Color {
+                        r: 1.,
+                        g: 1.,
+                        b: 1.,
+                        a: 1.,
+                    },
+                )
+            }
             text => panic!("unknown element type {}", text),
         }
     }
@@ -449,7 +460,7 @@ pub struct GUI<'a> {
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: HashMap<String, AtlassedTexture>,
     elements: HashMap<String, GUIElement>,
-    cursor: Option<(AtlassedTexture, f32, f32, f32, f32)>,
+    cursor: Option<(GUIComponent, f32, f32)>,
     sdl: &'a sdl2::Sdl,
     mouse_locked: bool,
     pub size: (u32, u32),
@@ -482,51 +493,64 @@ impl<'a> GUI<'a> {
         match data["type"].as_str().unwrap() {
             "setElement" => {
                 let id = data["id"].as_str().unwrap().to_string();
-                if !data["element_type"].is_null() {
-                    let component = GUIComponent::from_json(&data, &self.texture_atlas);
-                    let element = GUIElement {
-                        component,
-                        x: data["x"].as_f32().unwrap(),
-                        y: data["y"].as_f32().unwrap(),
-                    };
-                    self.elements.insert(id, element);
-                } else {
-                    self.elements.remove(&id);
+                match id.as_str() {
+                    "cursor" => {
+                        let component = GUIComponent::from_json(&data, &self.texture_atlas);
+                        if let Some(cursor) = &mut self.cursor {
+                            cursor.0 = component;
+                        } else {
+                            self.cursor = Some((component, 0., 0.));
+                        }
+                    }
+                    _ => {
+                        if !data["element_type"].is_null() {
+                            let component = GUIComponent::from_json(&data, &self.texture_atlas);
+                            let element = GUIElement {
+                                component,
+                                x: data["x"].as_f32().unwrap(),
+                                y: data["y"].as_f32().unwrap(),
+                            };
+                            self.elements.insert(id, element);
+                        } else {
+                            self.elements.remove(&id);
+                        }
+                    }
                 }
             }
             "editElement" => {
                 let id = data["id"].as_str().unwrap().to_string();
-                if let Some(element) = self.elements.get_mut(&id) {
-                    let data_type = data["data_type"].as_str().unwrap();
-                    if data_type == "position" {
-                        let position = &data["position"];
-                        element.x = position[0].as_f32().unwrap();
-                        element.y = position[1].as_f32().unwrap();
-                    } else {
-                        element.component.set_data(data_type, &data);
+                match id.as_str() {
+                    "cursor" => {
+                        if let Some(cursor) = &mut self.cursor {
+                            let data_type = data["data_type"].as_str().unwrap();
+                            if data_type == "position" {
+                                let position = &data["position"];
+                                let x = position[0].as_f32().unwrap();
+                                let y = position[1].as_f32().unwrap();
+                                cursor.1 = x;
+                                cursor.2 = y;
+                                self.sdl.mouse().warp_mouse_in_window(
+                                    &self.window.borrow(),
+                                    (x * self.size.0 as f32) as i32,
+                                    (y * self.size.1 as f32) as i32,
+                                );
+                            } else {
+                                cursor.0.set_data(data_type, &data);
+                            }
+                        }
                     }
-                }
-            }
-            "setCursor" => {
-                let texture = &data["texture"];
-                let prev_pos = if let Some(cursor) = self.cursor {
-                    (cursor.1, cursor.2)
-                } else {
-                    (0., 0.)
-                };
-                if texture.is_null() {
-                    self.cursor = None;
-                } else {
-                    self.cursor = Some((
-                        self.texture_atlas
-                            .get(texture.as_str().unwrap())
-                            .unwrap()
-                            .clone(),
-                        prev_pos.0,
-                        prev_pos.1,
-                        data["width"].as_f32().unwrap(),
-                        data["height"].as_f32().unwrap(),
-                    ));
+                    _ => {
+                        if let Some(element) = self.elements.get_mut(&id) {
+                            let data_type = data["data_type"].as_str().unwrap();
+                            if data_type == "position" {
+                                let position = &data["position"];
+                                element.x = position[0].as_f32().unwrap();
+                                element.y = position[1].as_f32().unwrap();
+                            } else {
+                                element.component.set_data(data_type, &data);
+                            }
+                        }
+                    }
                 }
             }
             "setCursorLock" => {
@@ -564,19 +588,14 @@ impl<'a> GUI<'a> {
             );
         }
         if let Some(cursor) = &self.cursor {
-            quads.push(GUIQuad::new(
-                cursor.1 - (cursor.3 / 2.),
-                cursor.2 - (cursor.4 / 2.),
-                cursor.3,
-                cursor.4,
-                &cursor.0,
-                Color {
-                    r: 1.,
-                    g: 1.,
-                    b: 1.,
-                    a: 1.,
-                },
-            ));
+            cursor.0.add_quads(
+                &mut quads,
+                &self.font_renderer,
+                &self.texture_atlas,
+                &self.item_renderer,
+                cursor.1 - (cursor.0.get_width() / 2.),
+                cursor.2 - (cursor.0.get_height() / 2.),
+            );
         }
         quads
     }
@@ -593,7 +612,7 @@ impl<'a> GUI<'a> {
     }
     pub fn on_left_click(&mut self, socket: &mut WebSocket<TcpStream>) -> bool {
         if !self.mouse_locked {
-            if let Some(cursor) = self.cursor {
+            if let Some(cursor) = &self.cursor {
                 let mut id = None;
                 for element in &self.elements {
                     if element.1.x <= cursor.1
