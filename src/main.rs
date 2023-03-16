@@ -101,6 +101,7 @@ fn main() {
         ("font", std::path::Path::new("font.png")),
         ("slot", std::path::Path::new("slot.png")),
         ("cursor", std::path::Path::new("cursor.png")),
+        ("arrow", std::path::Path::new("arrow.png")),
     ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),
@@ -731,7 +732,7 @@ fn pack_textures(
         let texture = game::AtlassedTexture {
             x: frame.frame.x,
             y: frame.frame.y,
-            w: frame.frame.h,
+            w: frame.frame.w,
             h: frame.frame.h,
             atlas_w: packer.width(),
             atlas_h: packer.height(),
