@@ -188,6 +188,22 @@ impl GUIComponent {
         json: &JsonValue,
         texture_atlas: &HashMap<String, AtlassedTexture>,
     ) -> GUIComponent {
+        let json_color = &json["color"];
+        let color = if json_color.is_null() {
+            Color {
+                r: 1.,
+                g: 1.,
+                b: 1.,
+                a: 1.,
+            }
+        } else {
+            Color {
+                r: json_color[0].as_f32().unwrap(),
+                g: json_color[1].as_f32().unwrap(),
+                b: json_color[2].as_f32().unwrap(),
+                a: json_color[3].as_f32().unwrap(),
+            }
+        };
         match json["element_type"].as_str().unwrap() {
             "image" => GUIComponent::ImageComponent(
                 json["w"].as_f32().unwrap(),
@@ -196,24 +212,10 @@ impl GUIComponent {
                     .get(json["texture"].as_str().unwrap())
                     .unwrap()
                     .clone(),
-                Color {
-                    r: 1.,
-                    g: 1.,
-                    b: 1.,
-                    a: 1.,
-                },
+                color,
                 None,
             ),
-            "text" => GUIComponent::TextComponent(
-                1.,
-                String::new(),
-                Color {
-                    r: 1.,
-                    g: 1.,
-                    b: 1.,
-                    a: 1.,
-                },
-            ),
+            "text" => GUIComponent::TextComponent(1., String::new(), color),
             "slot" => {
                 let json_slot = &json["item"];
                 let item = if json_slot.is_null() {
@@ -227,12 +229,7 @@ impl GUIComponent {
                 GUIComponent::SlotComponent(
                     1.,
                     item,
-                    Color {
-                        r: 1.,
-                        g: 1.,
-                        b: 1.,
-                        a: 1.,
-                    },
+                    color,
                     json["background"].as_bool().unwrap_or(true),
                 )
             }
