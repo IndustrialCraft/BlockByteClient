@@ -512,6 +512,7 @@ impl<'a> GUI<'a> {
                                 component,
                                 x: data["x"].as_f32().unwrap(),
                                 y: data["y"].as_f32().unwrap(),
+                                z: data["z"].as_i32().unwrap_or(0),
                             };
                             self.elements.insert(id, element);
                         } else {
@@ -580,14 +581,16 @@ impl<'a> GUI<'a> {
     }
     fn to_quad_list(&self) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
-        for element in &self.elements {
-            element.1.component.add_quads(
+        let mut elements: Vec<&GUIElement> = self.elements.values().collect();
+        elements.sort_by(|a, b| a.z.cmp(&b.z));
+        for element in elements {
+            element.component.add_quads(
                 &mut quads,
                 &self.font_renderer,
                 &self.texture_atlas,
                 &self.item_renderer,
-                element.1.x,
-                element.1.y,
+                element.x,
+                element.y,
             );
         }
         if let Some(cursor) = &self.cursor {
@@ -666,6 +669,7 @@ pub struct GUIElement {
     pub component: GUIComponent,
     pub x: f32,
     pub y: f32,
+    pub z: i32,
 }
 
 #[derive(Clone, Copy)]
