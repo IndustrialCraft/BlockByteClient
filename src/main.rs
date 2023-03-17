@@ -53,7 +53,7 @@ fn main() {
             .build()
             .unwrap(),
     );
-    let _gl_context = { window.borrow().gl_create_context().unwrap() };//do not drop
+    let _gl_context = { window.borrow().gl_create_context().unwrap() }; //do not drop
 
     let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
         x: 0f32,
@@ -141,6 +141,7 @@ fn main() {
         &sdl,
         (win_width, win_height),
         &window,
+        block_registry.clone(),
     );
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();

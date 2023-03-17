@@ -1,12 +1,18 @@
-use std::{cell::RefCell, collections::HashMap, net::TcpStream, rc::Rc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    net::TcpStream,
+    rc::Rc,
+    sync::{Arc, Mutex},
+};
 
 use json::JsonValue;
 use tungstenite::WebSocket;
 
 use crate::{
-    game::{self, AtlassedTexture},
+    game::{self, AtlassedTexture, BlockRegistry},
     glwrappers,
-    util::{ItemRenderData, NetworkMessageC2S},
+    util::{ItemModel, ItemRenderData, NetworkMessageC2S},
 };
 
 pub struct GUIRenderer {
@@ -57,7 +63,13 @@ impl GUIRenderer {
         }
         GUIRenderer { vao, vbo }
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader, quads: Vec<GUIQuad>) {
+    pub fn render(
+        &mut self,
+        shader: &glwrappers::Shader,
+        quads: Vec<GUIQuad>,
+        width_multiplier: f32,
+        height_multiplier: f32,
+    ) {
         shader.use_program();
         self.vao.bind();
         self.vbo.bind();
@@ -70,48 +82,8 @@ impl GUIRenderer {
         let mut vertices: Vec<glwrappers::GuiVertex> = Vec::new();
         for quad in &quads {
             vertices.push([
-                quad.x,
-                quad.y,
-                quad.u1,
-                quad.v1,
-                quad.color.r,
-                quad.color.g,
-                quad.color.b,
-                quad.color.a,
-            ]);
-            vertices.push([
-                quad.x + quad.w,
-                quad.y,
-                quad.u2,
-                quad.v1,
-                quad.color.r,
-                quad.color.g,
-                quad.color.b,
-                quad.color.a,
-            ]);
-            vertices.push([
-                quad.x + quad.w,
-                quad.y + quad.h,
-                quad.u2,
-                quad.v2,
-                quad.color.r,
-                quad.color.g,
-                quad.color.b,
-                quad.color.a,
-            ]);
-            vertices.push([
-                quad.x + quad.w,
-                quad.y + quad.h,
-                quad.u2,
-                quad.v2,
-                quad.color.r,
-                quad.color.g,
-                quad.color.b,
-                quad.color.a,
-            ]);
-            vertices.push([
-                quad.x,
-                quad.y + quad.h,
+                quad.x1 * width_multiplier,
+                quad.y1 * height_multiplier,
                 quad.u1,
                 quad.v2,
                 quad.color.r,
@@ -120,10 +92,50 @@ impl GUIRenderer {
                 quad.color.a,
             ]);
             vertices.push([
-                quad.x,
-                quad.y,
+                quad.x2 * width_multiplier,
+                quad.y2 * height_multiplier,
+                quad.u2,
+                quad.v2,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x3 * width_multiplier,
+                quad.y3 * height_multiplier,
+                quad.u2,
+                quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x3 * width_multiplier,
+                quad.y3 * height_multiplier,
+                quad.u2,
+                quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x4 * width_multiplier,
+                quad.y4 * height_multiplier,
                 quad.u1,
                 quad.v1,
+                quad.color.r,
+                quad.color.g,
+                quad.color.b,
+                quad.color.a,
+            ]);
+            vertices.push([
+                quad.x1 * width_multiplier,
+                quad.y1 * height_multiplier,
+                quad.u1,
+                quad.v2,
                 quad.color.r,
                 quad.color.g,
                 quad.color.b,
@@ -145,10 +157,14 @@ impl GUIRenderer {
     }
 }
 pub struct GUIQuad {
-    x: f32,
-    y: f32,
-    w: f32,
-    h: f32,
+    x1: f32,
+    y1: f32,
+    x2: f32,
+    y2: f32,
+    x3: f32,
+    y3: f32,
+    x4: f32,
+    y4: f32,
     u1: f32,
     v1: f32,
     u2: f32,
@@ -159,10 +175,38 @@ impl GUIQuad {
     pub fn new(x: f32, y: f32, w: f32, h: f32, texture: &AtlassedTexture, color: Color) -> GUIQuad {
         let uv = texture.get_coords();
         GUIQuad {
-            x,
-            y,
-            w,
-            h,
+            x1: x,
+            y1: y,
+            x2: x + w,
+            y2: y,
+            x3: x + w,
+            y3: y + h,
+            x4: x,
+            y4: y + h,
+            u1: uv.0,
+            v1: uv.1,
+            u2: uv.2,
+            v2: uv.3,
+            color,
+        }
+    }
+    pub fn new_uv(
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        uv: (f32, f32, f32, f32),
+        color: Color,
+    ) -> GUIQuad {
+        GUIQuad {
+            x1: x,
+            y1: y,
+            x2: x + w,
+            y2: y,
+            x3: x + w,
+            y3: y + h,
+            x4: x,
+            y4: y + h,
             u1: uv.0,
             v1: uv.1,
             u2: uv.2,
@@ -253,6 +297,19 @@ impl GUIComponent {
                     *w = json_dimensions[0].as_f32().unwrap();
                     *h = json_dimensions[1].as_f32().unwrap();
                 }
+                "slice" => {
+                    let json_slice = &json["slice"];
+                    *slice = if json_slice.is_null() {
+                        None
+                    } else {
+                        Some((
+                            json_slice[0].as_f32().unwrap(),
+                            json_slice[1].as_f32().unwrap(),
+                            json_slice[2].as_f32().unwrap(),
+                            json_slice[3].as_f32().unwrap(),
+                        ))
+                    };
+                }
                 _ => {}
             },
             Self::TextComponent(scale, text, color) => match data_type {
@@ -304,25 +361,23 @@ impl GUIComponent {
         text_renderer: &TextRenderer,
         texture_atlas: &HashMap<String, AtlassedTexture>,
         item_renderer: &Rc<RefCell<Vec<ItemRenderData>>>,
+        block_registry: &BlockRegistry,
         x: f32,
         y: f32,
     ) {
         match self {
             Self::ImageComponent(w, h, texture, color, slice) => match slice {
                 Some(slice) => {
-                    let uv0 = texture.map((slice.0, slice.1));
-                    let uv1 = texture.map((slice.2, slice.3));
-                    quads.push(GUIQuad {
+                    let uv0 = texture.map_uv((slice.0, slice.1));
+                    let uv1 = texture.map_uv((slice.2, slice.3));
+                    quads.push(GUIQuad::new_uv(
                         x,
                         y,
-                        w: *w,
-                        h: *h,
-                        color: *color,
-                        u1: uv0.0,
-                        v1: uv0.1,
-                        u2: uv1.0,
-                        v2: uv1.1,
-                    });
+                        *w,
+                        *h,
+                        (uv0.0, uv0.1, uv1.0, uv1.1),
+                        *color,
+                    ));
                 }
                 None => {
                     quads.push(GUIQuad::new(x, y, *w, *h, &texture, *color));
@@ -340,17 +395,16 @@ impl GUIComponent {
                             let kerning = 0.01f32 * scale;
                             let line_separation = 0.01f32 * scale;
                             let height = 0.07f32 * scale;
-                            quads.push(GUIQuad {
-                                x: x + (i * (width + kerning)),
-                                y: y - ((y_cnt as f32) * (height + line_separation)),
-                                w: width,
-                                h: height,
-                                u1: coords.0,
-                                v2: coords.1,
-                                u2: coords.2,
-                                v1: coords.3,
-                                color: *color,
-                            });
+                            let quad_x = x + (i * (width + kerning));
+                            let quad_y = y - ((y_cnt as f32) * (height + line_separation));
+                            quads.push(GUIQuad::new_uv(
+                                quad_x,
+                                quad_y,
+                                width,
+                                height,
+                                (coords.0, coords.1, coords.2, coords.3),
+                                *color,
+                            ));
                         }
                         x_cnt += 1;
                     }
@@ -373,40 +427,114 @@ impl GUIComponent {
                         text_renderer,
                         texture_atlas,
                         item_renderer,
+                        block_registry,
                         x - border,
                         y - border,
                     );
                 }
                 if let Some(slot) = item {
-                    GUIComponent::ImageComponent(
-                        size,
-                        size,
-                        texture_atlas
-                            .get(
-                                &item_renderer
-                                    .borrow()
-                                    .get(slot.item as usize)
-                                    .unwrap()
-                                    .texture,
+                    let item_render_data = item_renderer.borrow();
+                    let item_render_data = item_render_data.get(slot.item as usize).unwrap();
+                    match &item_render_data.model {
+                        ItemModel::Texture(texture) => {
+                            GUIComponent::ImageComponent(
+                                size,
+                                size,
+                                texture_atlas.get(texture).unwrap().clone(),
+                                Color {
+                                    r: 1.,
+                                    g: 1.,
+                                    b: 1.,
+                                    a: 1.,
+                                },
+                                None,
                             )
-                            .unwrap()
-                            .clone(),
-                        Color {
-                            r: 1.,
-                            g: 1.,
-                            b: 1.,
-                            a: 1.,
-                        },
-                        None,
-                    )
-                    .add_quads(
-                        quads,
-                        text_renderer,
-                        texture_atlas,
-                        item_renderer,
-                        x,
-                        y,
-                    );
+                            .add_quads(
+                                quads,
+                                text_renderer,
+                                texture_atlas,
+                                item_renderer,
+                                block_registry,
+                                x,
+                                y,
+                            );
+                        }
+                        ItemModel::Block(block_id) => {
+                            let block = block_registry.get_block(*block_id);
+                            match block.render_type {
+                                game::BlockRenderType::Air => {}
+                                game::BlockRenderType::Cube(north, _, right, _, up, _) => {
+                                    let top_texture = up.get_coords();
+                                    let front_texture = north.get_coords();
+                                    let right_texture = right.get_coords();
+                                    let middle_x = size * 13. / 26.;
+                                    let middle_y = size * 11. / 26.;
+                                    quads.push(GUIQuad {
+                                        x1: x,
+                                        y1: y + (size / 6. * 5.),
+                                        x2: x + middle_x,
+                                        y2: y + size,
+                                        x3: x + size,
+                                        y3: y + (size / 6. * 5.),
+                                        x4: x + middle_x,
+                                        y4: y + middle_y,
+                                        color: Color {
+                                            r: 1.,
+                                            g: 1.,
+                                            b: 1.,
+                                            a: 1.,
+                                        },
+                                        u1: top_texture.0,
+                                        v1: top_texture.1,
+                                        u2: top_texture.2,
+                                        v2: top_texture.3,
+                                    });
+                                    quads.push(GUIQuad {
+                                        x1: x + middle_x,
+                                        y1: y + middle_y,
+                                        x2: x + size,
+                                        y2: y + (size * 5. / 6.),
+                                        x3: x + (size * 23. / 25.),
+                                        y3: y + (size * 7.5 / 25.),
+                                        x4: x + middle_x,
+                                        y4: y,
+                                        color: Color {
+                                            r: 1.,
+                                            g: 1.,
+                                            b: 1.,
+                                            a: 1.,
+                                        },
+                                        u1: front_texture.0,
+                                        v1: front_texture.3,
+                                        u2: front_texture.2,
+                                        v2: front_texture.1,
+                                    });
+                                    quads.push(GUIQuad {
+                                        x1: x,
+                                        y1: y + (size * 5. / 6.),
+                                        x2: x + middle_x,
+                                        y2: y + middle_y,
+                                        x3: x + middle_x,
+                                        y3: y,
+                                        x4: x + (size * 2. / 25.),
+                                        y4: y + (size * 7.5 / 25.),
+                                        color: Color {
+                                            r: 1.,
+                                            g: 1.,
+                                            b: 1.,
+                                            a: 1.,
+                                        },
+                                        u1: right_texture.0,
+                                        v1: right_texture.3,
+                                        u2: right_texture.2,
+                                        v2: right_texture.1,
+                                    });
+                                }
+                                game::BlockRenderType::StaticModel(_, _, _, _, _, _, _) => todo!(),
+                            }
+                        }
+                    }
+
                     if slot.count > 1 {
                         let text = GUIComponent::TextComponent(
                             size * 5.,
@@ -423,6 +551,7 @@ impl GUIComponent {
                             text_renderer,
                             texture_atlas,
                             item_renderer,
+                            block_registry,
                             x + size - text.get_width(),
                             y + text.get_height(),
                         );
@@ -468,6 +597,7 @@ pub struct GUI<'a> {
     mouse_locked: bool,
     pub size: (u32, u32),
     window: &'a RefCell<sdl2::video::Window>,
+    block_registry: Arc<Mutex<game::BlockRegistry>>,
 }
 impl<'a> GUI<'a> {
     pub fn new(
@@ -477,6 +607,7 @@ impl<'a> GUI<'a> {
         sdl: &'a sdl2::Sdl,
         size: (u32, u32),
         window: &'a RefCell<sdl2::video::Window>,
+        block_registry: Arc<Mutex<game::BlockRegistry>>,
     ) -> Self {
         Self {
             cursor: None,
@@ -490,6 +621,7 @@ impl<'a> GUI<'a> {
             mouse_locked: false,
             size,
             window,
+            block_registry,
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -583,12 +715,13 @@ impl<'a> GUI<'a> {
         let mut quads = Vec::new();
         let mut elements: Vec<&GUIElement> = self.elements.values().collect();
         elements.sort_by(|a, b| a.z.cmp(&b.z));
-        for element in elements {
+        for element in &elements {
             element.component.add_quads(
                 &mut quads,
                 &self.font_renderer,
                 &self.texture_atlas,
                 &self.item_renderer,
+                &self.block_registry.lock().unwrap(),
                 element.x,
                 element.y,
             );
@@ -599,10 +732,51 @@ impl<'a> GUI<'a> {
                 &self.font_renderer,
                 &self.texture_atlas,
                 &self.item_renderer,
+                &self.block_registry.lock().unwrap(),
                 cursor.1 - (cursor.0.get_width() / 2.),
                 cursor.2 - (cursor.0.get_height() / 2.),
             );
+            for element in &elements {
+                if element.x <= cursor.1
+                    && element.x + element.component.get_width() >= cursor.1
+                    && element.y <= cursor.2
+                    && element.y + element.component.get_height() >= cursor.2
+                {
+                    if let GUIComponent::SlotComponent(_, item, _, background) = &element.component
+                    {
+                        if *background {
+                            if let Some(item) = item {
+                                GUIComponent::TextComponent(
+                                    1.,
+                                    self.item_renderer
+                                        .borrow()
+                                        .get(item.item as usize)
+                                        .unwrap()
+                                        .name
+                                        .clone(),
+                                    Color {
+                                        r: 1.,
+                                        g: 1.,
+                                        b: 1.,
+                                        a: 1.,
+                                    },
+                                )
+                                .add_quads(
+                                    &mut quads,
+                                    &self.font_renderer,
+                                    &self.texture_atlas,
+                                    &self.item_renderer,
+                                    &self.block_registry.lock().unwrap(),
+                                    cursor.1,
+                                    cursor.2,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
+
         quads
     }
     pub fn on_mouse_move(&mut self, x: i32, y: i32) -> bool {
@@ -610,7 +784,8 @@ impl<'a> GUI<'a> {
             if let Some(cursor) = &mut self.cursor {
                 let half_width = (self.size.0 as f32) / 2.;
                 let half_height = (self.size.1 as f32) / 2.;
-                cursor.1 = ((x as f32) - half_width) / half_width;
+                cursor.1 = (((x as f32) - half_width) / half_width)
+                    / (self.size.1 as f32 / self.size.0 as f32);
                 cursor.2 = -((y as f32) - half_height) / half_height;
             }
         }
@@ -642,7 +817,12 @@ impl<'a> GUI<'a> {
         !self.mouse_locked
     }
     pub fn render(&mut self, shader: &glwrappers::Shader) {
-        self.renderer.render(shader, self.to_quad_list());
+        self.renderer.render(
+            shader,
+            self.to_quad_list(),
+            self.size.1 as f32 / self.size.0 as f32,
+            1.,
+        );
     }
 }
 pub struct TextRenderer {

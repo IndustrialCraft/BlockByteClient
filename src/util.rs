@@ -15,7 +15,11 @@ pub struct EntityRenderData {
 }
 pub struct ItemRenderData {
     pub name: String,
-    pub texture: String,
+    pub model: ItemModel,
+}
+pub enum ItemModel {
+    Texture(String),
+    Block(u32),
 }
 #[repr(u8)]
 pub enum NetworkMessageS2C {
@@ -112,8 +116,15 @@ impl NetworkMessageS2C {
                 let size: u16 = data.read_be().unwrap();
                 for _ in 0..size {
                     let name = read_string(&mut data);
-                    let texture = read_string(&mut data);
-                    items.push(ItemRenderData { name, texture });
+                    let model_type = read_string(&mut data);
+                    items.push(ItemRenderData {
+                        name,
+                        model: match model_type.as_str() {
+                            "texture" => ItemModel::Texture(read_string(&mut data)),
+                            "block" => ItemModel::Block(data.read_be().unwrap()),
+                            _ => panic!(),
+                        },
+                    });
                 }
                 Some(NetworkMessageS2C::InitializeContent(
                     blocks, entities, items,

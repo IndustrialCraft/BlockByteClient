@@ -535,6 +535,12 @@ impl AtlassedTexture {
             ((self.y as f32) + uv.1) / (self.atlas_h as f32),
         )
     }
+    pub fn map_uv(&self, uv: (f32, f32)) -> (f32, f32) {
+        (
+            ((self.x as f32) + (uv.0 * self.w as f32)) / (self.atlas_w as f32),
+            ((self.y as f32) + (uv.1 * self.h as f32)) / (self.atlas_h as f32),
+        )
+    }
 }
 
 pub struct World<'a> {
