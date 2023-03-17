@@ -819,6 +819,9 @@ impl<'a> GUI<'a> {
         }
         !self.mouse_locked
     }
+    pub fn on_right_click(&mut self) -> bool {
+        !self.mouse_locked
+    }
     pub fn render(&mut self, shader: &glwrappers::Shader) {
         self.renderer.render(
             shader,

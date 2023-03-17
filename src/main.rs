@@ -356,18 +356,20 @@ fn main() {
                     }
                     if mouse_btn == MouseButton::Right {
                         if let Some((position, _id, face)) = raycast_result {
-                            socket
-                                .write_message(tungstenite::Message::Binary(
-                                    NetworkMessageC2S::RightClickBlock(
-                                        position.x,
-                                        position.y,
-                                        position.z,
-                                        face,
-                                        camera.is_shifting(),
-                                    )
-                                    .to_data(),
-                                ))
-                                .unwrap();
+                            if !gui.on_right_click() {
+                                socket
+                                    .write_message(tungstenite::Message::Binary(
+                                        NetworkMessageC2S::RightClickBlock(
+                                            position.x,
+                                            position.y,
+                                            position.z,
+                                            face,
+                                            camera.is_shifting(),
+                                        )
+                                        .to_data(),
+                                    ))
+                                    .unwrap();
+                            }
                         }
                     }
                 }
