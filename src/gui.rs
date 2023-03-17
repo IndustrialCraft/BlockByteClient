@@ -598,6 +598,7 @@ pub struct GUI<'a> {
     pub size: (u32, u32),
     window: &'a RefCell<sdl2::video::Window>,
     block_registry: Arc<Mutex<game::BlockRegistry>>,
+    pub gui_scale: f32,
 }
 impl<'a> GUI<'a> {
     pub fn new(
@@ -622,6 +623,7 @@ impl<'a> GUI<'a> {
             size,
             window,
             block_registry,
+            gui_scale: 1.5,
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -785,8 +787,9 @@ impl<'a> GUI<'a> {
                 let half_width = (self.size.0 as f32) / 2.;
                 let half_height = (self.size.1 as f32) / 2.;
                 cursor.1 = (((x as f32) - half_width) / half_width)
-                    / (self.size.1 as f32 / self.size.0 as f32);
-                cursor.2 = -((y as f32) - half_height) / half_height;
+                    / (self.size.1 as f32 / self.size.0 as f32)
+                    / self.gui_scale;
+                cursor.2 = (-((y as f32) - half_height) / half_height) / self.gui_scale;
             }
         }
         !self.mouse_locked
@@ -820,8 +823,8 @@ impl<'a> GUI<'a> {
         self.renderer.render(
             shader,
             self.to_quad_list(),
-            self.size.1 as f32 / self.size.0 as f32,
-            1.,
+            (self.size.1 as f32 / self.size.0 as f32) * self.gui_scale,
+            self.gui_scale,
         );
     }
 }
