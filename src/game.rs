@@ -82,7 +82,7 @@ impl ClientPlayer {
         if self.shifting {
             move_vector /= 2.;
         }
-        let mut total_move = (move_vector + self.velocity) * (delta_time * 100f32);
+        let mut total_move = (move_vector + self.velocity) * (delta_time * 10f32);
         if ClientPlayer::collides_at(position.add(total_move.x, 0., 0.), world, self.shifting) {
             total_move.x = 0.;
             self.velocity.x = 0.;
@@ -133,8 +133,8 @@ impl ClientPlayer {
         }
 
         self.position += total_move;
-        self.velocity.y -= delta_time * 20f32;
-        self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 40.;
+        self.velocity.y -= delta_time * 2f32;
+        self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
     }
     fn collides_at(position: util::Position, world: &World, shifting: bool) -> bool {

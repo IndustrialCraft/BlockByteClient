@@ -35,6 +35,7 @@ pub enum NetworkMessageS2C {
         Vec<ItemRenderData>,
     ) = 6,
     GuiData(json::JsonValue) = 7,
+    BlockBreakTimeResponse(u32, f32) = 8,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -133,18 +134,23 @@ impl NetworkMessageS2C {
             7 => Some(NetworkMessageS2C::GuiData(
                 json::parse(read_string(&mut data).as_str()).unwrap(),
             )),
+            8 => Some(NetworkMessageS2C::BlockBreakTimeResponse(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
             _ => None,
         }
     }
 }
 pub enum NetworkMessageC2S {
-    LeftClickBlock(i32, i32, i32),
+    BreakBlock(i32, i32, i32),
     RightClickBlock(i32, i32, i32, Face, bool),
     PlayerPosition(f32, f32, f32, bool, f32),
     MouseScroll(i32, i32),
     Keyboard(i32, bool, bool),
     GuiClick(String, MouseButton),
     GuiClose,
+    RequestBlockBreakTime(u32, BlockPosition),
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -156,7 +162,7 @@ impl NetworkMessageC2S {
     pub fn to_data(&self) -> Vec<u8> {
         let mut data: Vec<u8> = Vec::new();
         match self {
-            Self::LeftClickBlock(x, y, z) => {
+            Self::BreakBlock(x, y, z) => {
                 data.write_be(0u8).unwrap();
                 data.write_be(x.to_owned()).unwrap();
                 data.write_be(y.to_owned()).unwrap();
@@ -197,12 +203,19 @@ impl NetworkMessageC2S {
             Self::GuiClose => {
                 data.write_be(6u8).unwrap();
             }
+            Self::RequestBlockBreakTime(id, block_position) => {
+                data.write_be(7u8).unwrap();
+                data.write_be(*id).unwrap();
+                data.write_be(block_position.x).unwrap();
+                data.write_be(block_position.y).unwrap();
+                data.write_be(block_position.z).unwrap();
+            }
         };
         data
     }
 }
 
-#[derive(Sequence, Debug, Clone, Copy)]
+#[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Face {
     Front = 0,
     Back = 1,
@@ -410,7 +423,7 @@ impl Position {
         }
     }
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct BlockPosition {
     pub x: i32,
     pub y: i32,

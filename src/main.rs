@@ -8,14 +8,18 @@ mod util;
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::net::TcpStream;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use game::AtlassedTexture;
 use game::Block;
 use game::BlockRegistry;
 use game::BlockRenderType;
 use game::StaticBlockModel;
+use glwrappers::Buffer;
+use glwrappers::VertexArray;
 use image::EncodableLayout;
 use image::RgbaImage;
 use ogl33::c_char;
@@ -24,6 +28,8 @@ use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
+use tungstenite::WebSocket;
+use ultraviolet::Mat4;
 use util::*;
 
 use endio::BERead;
@@ -102,6 +108,15 @@ fn main() {
         ("slot", std::path::Path::new("slot.png")),
         ("cursor", std::path::Path::new("cursor.png")),
         ("arrow", std::path::Path::new("arrow.png")),
+        ("breaking1", std::path::Path::new("breaking1.png")),
+        ("breaking2", std::path::Path::new("breaking2.png")),
+        ("breaking3", std::path::Path::new("breaking3.png")),
+        ("breaking4", std::path::Path::new("breaking4.png")),
+        ("breaking5", std::path::Path::new("breaking5.png")),
+        ("breaking6", std::path::Path::new("breaking6.png")),
+        ("breaking7", std::path::Path::new("breaking7.png")),
+        ("breaking8", std::path::Path::new("breaking8.png")),
+        ("breaking9", std::path::Path::new("breaking9.png")),
     ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),
@@ -143,6 +158,17 @@ fn main() {
         &window,
         block_registry.clone(),
     );
+    let mut block_breaking_manager = BlockBreakingManager::new(vec![
+        texture_atlas.get("breaking1").unwrap().clone(),
+        texture_atlas.get("breaking2").unwrap().clone(),
+        texture_atlas.get("breaking3").unwrap().clone(),
+        texture_atlas.get("breaking4").unwrap().clone(),
+        texture_atlas.get("breaking5").unwrap().clone(),
+        texture_atlas.get("breaking6").unwrap().clone(),
+        texture_atlas.get("breaking7").unwrap().clone(),
+        texture_atlas.get("breaking8").unwrap().clone(),
+        texture_atlas.get("breaking9").unwrap().clone(),
+    ]);
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
     let (chunk_builder_output_tx, chunk_builder_output_rx) = std::sync::mpsc::channel();
@@ -293,6 +319,8 @@ fn main() {
     'main_loop: loop {
         let render_start_time = Instant::now();
         let raycast_result = { raycast(&world, &camera, &block_registry.lock().unwrap()) };
+        block_breaking_manager
+            .set_target_block(raycast_result.map(|raycast| (raycast.0, raycast.2)));
         for event in event_pump.poll_iter() {
             match event {
                 Event::Quit { timestamp: _ } => break 'main_loop,
@@ -342,7 +370,7 @@ fn main() {
                     }
                     if mouse_btn == MouseButton::Left {
                         if !gui.on_left_click(&mut socket) {
-                            if let Some((position, _id, _face)) = raycast_result {
+                            /*if let Some((position, _id, _face)) = raycast_result {
                                 socket
                                     .write_message(tungstenite::Message::Binary(
                                         NetworkMessageC2S::LeftClickBlock(
@@ -351,7 +379,8 @@ fn main() {
                                         .to_data(),
                                     ))
                                     .unwrap();
-                            }
+                            }*/
+                            block_breaking_manager.set_left_click_held(true);
                         }
                     }
                     if mouse_btn == MouseButton::Right {
@@ -371,6 +400,19 @@ fn main() {
                                     .unwrap();
                             }
                         }
+                    }
+                }
+                Event::MouseButtonUp {
+                    timestamp: _,
+                    window_id: _,
+                    which: _,
+                    mouse_btn,
+                    clicks: _,
+                    x: _,
+                    y: _,
+                } => {
+                    if mouse_btn == MouseButton::Left {
+                        block_breaking_manager.set_left_click_held(false);
                     }
                 }
                 Event::KeyDown {
@@ -433,7 +475,7 @@ fn main() {
         unsafe {
             ogl33::glClear(ogl33::GL_COLOR_BUFFER_BIT | ogl33::GL_DEPTH_BUFFER_BIT);
 
-            let time = timer.ticks() as f32 / 10_000.0_f32;
+            let time = timer.ticks() as f32 / 1000f32;
             let delta_time = time - last_time;
             last_time = time;
 
@@ -593,6 +635,9 @@ fn main() {
                                 NetworkMessageS2C::GuiData(data) => {
                                     gui.on_json_data(data);
                                 }
+                                NetworkMessageS2C::BlockBreakTimeResponse(id, time) => {
+                                    block_breaking_manager.on_block_break_time_response(id, time);
+                                }
                             }
                         }
                         tungstenite::Message::Close(_) => {
@@ -608,7 +653,7 @@ fn main() {
                     },
                 }
             }
-
+            block_breaking_manager.tick(delta_time, &mut socket);
             camera.update_position(&keys_held, delta_time, &world);
             {
                 window
@@ -659,15 +704,13 @@ fn main() {
             let projection_view_loc = model_shader
                 .get_uniform_location("projection_view\0")
                 .expect("transform uniform not found");
-            model_shader.set_uniform_matrix(
-                projection_view_loc,
-                ultraviolet::projection::perspective_gl(
-                    90f32.to_radians(),
-                    (win_width as f32) / (win_height as f32),
-                    0.01,
-                    1000.,
-                ) * camera.create_view_matrix(),
-            );
+            let projection = ultraviolet::projection::perspective_gl(
+                90f32.to_radians(),
+                (win_width as f32) / (win_height as f32),
+                0.01,
+                1000.,
+            ) * camera.create_view_matrix();
+            model_shader.set_uniform_matrix(projection_view_loc, projection);
             for entity in &entities {
                 model.render(
                     entity.1.position,
@@ -699,7 +742,7 @@ fn main() {
                 );
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
-
+            block_breaking_manager.render(&projection);
             gui.render(&gui_shader);
             {
                 window.borrow().gl_swap_window();
@@ -993,5 +1036,196 @@ impl BlockOutline {
             ogl33::glDrawArrays(ogl33::GL_LINES, 0, self.vertex_count);
         }
         self.last_id = id;
+    }
+}
+struct BlockBreakingManager {
+    id: u32,
+    time_requested: bool,
+    target_block: Option<(BlockPosition, Face)>,
+    key_down: bool,
+    breaking_animation: Option<(f32, f32)>,
+    block_breaking_shader: glwrappers::Shader,
+    vao: glwrappers::VertexArray,
+    vbo: glwrappers::Buffer,
+    breaking_textures: Vec<AtlassedTexture>,
+}
+impl BlockBreakingManager {
+    pub fn new(breaking_textures: Vec<AtlassedTexture>) -> Self {
+        let vao = VertexArray::new().unwrap();
+        vao.bind();
+        let vbo = Buffer::new(glwrappers::BufferType::Array).unwrap();
+        vbo.bind();
+        unsafe {
+            ogl33::glVertexAttribPointer(
+                0,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::BreakingVertex>()
+                    .try_into()
+                    .unwrap(),
+                0 as *const _,
+            );
+            ogl33::glVertexAttribPointer(
+                1,
+                2,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::BreakingVertex>()
+                    .try_into()
+                    .unwrap(),
+                std::mem::size_of::<[f32; 3]>() as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glEnableVertexAttribArray(0);
+        }
+        BlockBreakingManager {
+            id: 0,
+            target_block: None,
+            breaking_animation: None,
+            key_down: false,
+            time_requested: false,
+            block_breaking_shader: glwrappers::Shader::new(
+                include_str!("shaders/block_breaking.vert").to_string(),
+                include_str!("shaders/block_breaking.frag").to_string(),
+            ),
+            vao,
+            vbo,
+            breaking_textures,
+        }
+    }
+    pub fn tick(&mut self, delta_time: f32, socket: &mut WebSocket<TcpStream>) {
+        if let Some(target_block) = self.target_block {
+            if self.key_down && self.breaking_animation.is_none() && !self.time_requested {
+                self.time_requested = true;
+                self.id += 1;
+                socket
+                    .write_message(tungstenite::Message::Binary(
+                        NetworkMessageC2S::RequestBlockBreakTime(self.id, target_block.0).to_data(),
+                    ))
+                    .unwrap();
+            }
+        }
+        if let Some(breaking_animation) = &mut self.breaking_animation {
+            if let Some(target_block) = self.target_block {
+                breaking_animation.0 += delta_time;
+                if breaking_animation.0 >= breaking_animation.1 {
+                    self.breaking_animation = None;
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::BreakBlock(
+                                target_block.0.x,
+                                target_block.0.y,
+                                target_block.0.z,
+                            )
+                            .to_data(),
+                        ))
+                        .unwrap();
+                }
+            }
+        }
+    }
+    pub fn render(&mut self, projection: &Mat4) {
+        if let Some(target_block) = self.target_block {
+            if let Some(breaking_animation) = self.breaking_animation {
+                let breaking_progress = breaking_animation.0 / breaking_animation.1;
+                let breaking_texture = self
+                    .breaking_textures
+                    .get((breaking_progress * self.breaking_textures.len() as f32) as usize)
+                    .unwrap();
+                let uv = breaking_texture.get_coords();
+                self.vao.bind();
+                self.vbo.bind();
+                let mut face_vertices = target_block.1.get_vertices();
+                for vertex in &mut face_vertices {
+                    vertex.x += target_block.0.x as f32;
+                    vertex.y += target_block.0.y as f32;
+                    vertex.z += target_block.0.z as f32;
+                }
+                let mut vertices: Vec<glwrappers::BreakingVertex> = Vec::new();
+                vertices.push([
+                    face_vertices[0].x,
+                    face_vertices[0].y,
+                    face_vertices[0].z,
+                    uv.0,
+                    uv.1,
+                ]);
+                vertices.push([
+                    face_vertices[1].x,
+                    face_vertices[1].y,
+                    face_vertices[1].z,
+                    uv.2,
+                    uv.1,
+                ]);
+                vertices.push([
+                    face_vertices[2].x,
+                    face_vertices[2].y,
+                    face_vertices[2].z,
+                    uv.2,
+                    uv.3,
+                ]);
+                vertices.push([
+                    face_vertices[2].x,
+                    face_vertices[2].y,
+                    face_vertices[2].z,
+                    uv.2,
+                    uv.3,
+                ]);
+                vertices.push([
+                    face_vertices[3].x,
+                    face_vertices[3].y,
+                    face_vertices[3].z,
+                    uv.0,
+                    uv.3,
+                ]);
+                vertices.push([
+                    face_vertices[0].x,
+                    face_vertices[0].y,
+                    face_vertices[0].z,
+                    uv.0,
+                    uv.1,
+                ]);
+                self.vbo.upload_data(
+                    bytemuck::cast_slice(vertices.as_slice()),
+                    ogl33::GL_DYNAMIC_DRAW,
+                );
+                self.block_breaking_shader.use_program();
+                self.block_breaking_shader.set_uniform_matrix(
+                    self.block_breaking_shader
+                        .get_uniform_location("projection_view\0")
+                        .unwrap(),
+                    projection.clone(),
+                );
+                unsafe {
+                    ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+                    ogl33::glEnable(ogl33::GL_BLEND);
+                    ogl33::glDisable(ogl33::GL_DEPTH_TEST);
+                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, 6);
+                    ogl33::glEnable(ogl33::GL_DEPTH_TEST);
+                    ogl33::glDisable(ogl33::GL_BLEND);
+                }
+            }
+        }
+    }
+    pub fn on_block_break_time_response(&mut self, id: u32, time: f32) {
+        if self.id == id {
+            self.breaking_animation = Some((0., time));
+            self.time_requested = false;
+        }
+    }
+    pub fn set_left_click_held(&mut self, held: bool) {
+        self.key_down = held;
+        if !held {
+            self.breaking_animation = None;
+        }
+    }
+    pub fn set_target_block(&mut self, block: Option<(BlockPosition, Face)>) {
+        if match (self.target_block, block) {
+            (Some(previous), Some(current)) => previous.0 != current.0,
+            _ => true,
+        } {
+            self.breaking_animation = None;
+        }
+        self.target_block = block;
     }
 }
