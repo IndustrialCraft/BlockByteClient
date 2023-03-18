@@ -13,6 +13,7 @@ use crate::{
     game::{self, AtlassedTexture, BlockRegistry},
     glwrappers,
     util::{ItemModel, ItemRenderData, NetworkMessageC2S},
+    TextureAtlas,
 };
 
 pub struct GUIRenderer {
@@ -228,10 +229,7 @@ pub enum GUIComponent {
     SlotComponent(f32, Option<ItemSlot>, Color, bool),
 }
 impl GUIComponent {
-    pub fn from_json(
-        json: &JsonValue,
-        texture_atlas: &HashMap<String, AtlassedTexture>,
-    ) -> GUIComponent {
+    pub fn from_json(json: &JsonValue, texture_atlas: &TextureAtlas) -> GUIComponent {
         let json_color = &json["color"];
         let color = if json_color.is_null() {
             Color {
@@ -252,10 +250,7 @@ impl GUIComponent {
             "image" => GUIComponent::ImageComponent(
                 json["w"].as_f32().unwrap(),
                 json["h"].as_f32().unwrap(),
-                texture_atlas
-                    .get(json["texture"].as_str().unwrap())
-                    .unwrap()
-                    .clone(),
+                texture_atlas.get(json["texture"].as_str().unwrap()).clone(),
                 color,
                 None,
             ),
@@ -359,7 +354,7 @@ impl GUIComponent {
         &self,
         quads: &mut Vec<GUIQuad>,
         text_renderer: &TextRenderer,
-        texture_atlas: &HashMap<String, AtlassedTexture>,
+        texture_atlas: &TextureAtlas,
         item_renderer: &Rc<RefCell<Vec<ItemRenderData>>>,
         block_registry: &BlockRegistry,
         x: f32,
@@ -418,7 +413,7 @@ impl GUIComponent {
                     GUIComponent::ImageComponent(
                         size + (2. * border),
                         size + (2. * border),
-                        texture_atlas.get("slot").unwrap().clone(),
+                        texture_atlas.get("slot").clone(),
                         *color,
                         None,
                     )
@@ -440,7 +435,7 @@ impl GUIComponent {
                             GUIComponent::ImageComponent(
                                 size,
                                 size,
-                                texture_atlas.get(texture).unwrap().clone(),
+                                texture_atlas.get(texture).clone(),
                                 Color {
                                     r: 1.,
                                     g: 1.,
@@ -590,7 +585,7 @@ pub struct GUI<'a> {
     font_renderer: TextRenderer,
     item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
     slots: Vec<Option<ItemSlot>>,
-    texture_atlas: HashMap<String, AtlassedTexture>,
+    texture_atlas: TextureAtlas,
     elements: HashMap<String, GUIElement>,
     cursor: Option<(GUIComponent, f32, f32)>,
     sdl: &'a sdl2::Sdl,
@@ -604,7 +599,7 @@ impl<'a> GUI<'a> {
     pub fn new(
         text_renderer: TextRenderer,
         item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
-        texture_atlas: HashMap<String, AtlassedTexture>,
+        texture_atlas: TextureAtlas,
         sdl: &'a sdl2::Sdl,
         size: (u32, u32),
         window: &'a RefCell<sdl2::video::Window>,

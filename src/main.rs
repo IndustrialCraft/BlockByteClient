@@ -9,6 +9,7 @@ mod util;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::TcpStream;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
@@ -128,7 +129,7 @@ fn main() {
     video_subsystem
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
-    let player_texture = texture_atlas.get("player").unwrap();
+    let player_texture = texture_atlas.get("player");
     let model = game::EntityModel::new(
         json::parse(
             std::fs::read_to_string(std::path::Path::new("player.bbmodel"))
@@ -149,7 +150,7 @@ fn main() {
     let timer = sdl.timer().unwrap();
     let mut gui = gui::GUI::new(
         gui::TextRenderer {
-            texture: texture_atlas.get("font").unwrap().clone(),
+            texture: texture_atlas.get("font").clone(),
         },
         item_registry.clone(),
         texture_atlas.clone(),
@@ -159,15 +160,15 @@ fn main() {
         block_registry.clone(),
     );
     let mut block_breaking_manager = BlockBreakingManager::new(vec![
-        texture_atlas.get("breaking1").unwrap().clone(),
-        texture_atlas.get("breaking2").unwrap().clone(),
-        texture_atlas.get("breaking3").unwrap().clone(),
-        texture_atlas.get("breaking4").unwrap().clone(),
-        texture_atlas.get("breaking5").unwrap().clone(),
-        texture_atlas.get("breaking6").unwrap().clone(),
-        texture_atlas.get("breaking7").unwrap().clone(),
-        texture_atlas.get("breaking8").unwrap().clone(),
-        texture_atlas.get("breaking9").unwrap().clone(),
+        texture_atlas.get("breaking1").clone(),
+        texture_atlas.get("breaking2").clone(),
+        texture_atlas.get("breaking3").clone(),
+        texture_atlas.get("breaking4").clone(),
+        texture_atlas.get("breaking5").clone(),
+        texture_atlas.get("breaking6").clone(),
+        texture_atlas.get("breaking7").clone(),
+        texture_atlas.get("breaking8").clone(),
+        texture_atlas.get("breaking9").clone(),
     ]);
     let mut last_frame_time = 0f32;
     let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
@@ -551,7 +552,6 @@ fn main() {
                                                                     .as_str()
                                                                     .unwrap(),
                                                             )
-                                                            .unwrap()
                                                             .clone(),
                                                         texture_atlas
                                                             .get(
@@ -559,7 +559,6 @@ fn main() {
                                                                     .as_str()
                                                                     .unwrap(),
                                                             )
-                                                            .unwrap()
                                                             .clone(),
                                                         texture_atlas
                                                             .get(
@@ -567,7 +566,6 @@ fn main() {
                                                                     .as_str()
                                                                     .unwrap(),
                                                             )
-                                                            .unwrap()
                                                             .clone(),
                                                         texture_atlas
                                                             .get(
@@ -575,11 +573,9 @@ fn main() {
                                                                     .as_str()
                                                                     .unwrap(),
                                                             )
-                                                            .unwrap()
                                                             .clone(),
                                                         texture_atlas
                                                             .get(block.json["up"].as_str().unwrap())
-                                                            .unwrap()
                                                             .clone(),
                                                         texture_atlas
                                                             .get(
@@ -587,7 +583,6 @@ fn main() {
                                                                     .as_str()
                                                                     .unwrap(),
                                                             )
-                                                            .unwrap()
                                                             .clone(),
                                                     ),
                                                 });
@@ -595,7 +590,6 @@ fn main() {
                                             "static" => {
                                                 let texture = texture_atlas
                                                     .get(block.json["texture"].as_str().unwrap())
-                                                    .unwrap()
                                                     .clone();
                                                 block_registry_blocks.push(Block {
                                                     render_data: 0,
@@ -752,12 +746,7 @@ fn main() {
         }
     }
 }
-fn pack_textures(
-    textures: Vec<(&str, &std::path::Path)>,
-) -> (
-    std::collections::HashMap<String, game::AtlassedTexture>,
-    RgbaImage,
-) {
+fn pack_textures(textures: Vec<(&str, &std::path::Path)>) -> (TextureAtlas, RgbaImage) {
     let mut texture_map = std::collections::HashMap::new();
     let mut packer =
         texture_packer::TexturePacker::new_skyline(texture_packer::TexturePackerConfig {
@@ -771,9 +760,17 @@ fn pack_textures(
             texture_extrusion: 0,
         });
     for (name, path) in textures {
-        let texture = ImageImporter::import_from_file(path).expect("Unable to import texture");
-        packer.pack_own(name, texture).unwrap();
+        if let Ok(texture) = ImageImporter::import_from_file(path) {
+            packer.pack_own(name, texture).unwrap();
+        }
     }
+    packer
+        .pack_own(
+            "missing",
+            ImageImporter::import_from_file(Path::new("missing.png"))
+                .expect("missing texture not found"),
+        )
+        .unwrap();
     for (name, frame) in packer.get_frames() {
         let texture = game::AtlassedTexture {
             x: frame.frame.x,
@@ -786,9 +783,24 @@ fn pack_textures(
         texture_map.insert(name.to_string(), texture);
     }
     let exporter = ImageExporter::export(&packer).unwrap();
-    (texture_map, exporter.to_rgba8())
+    (
+        TextureAtlas {
+            missing_texture: texture_map.get("missing").unwrap().clone(),
+            textures: texture_map,
+        },
+        exporter.to_rgba8(),
+    )
 }
-
+#[derive(Clone)]
+pub struct TextureAtlas {
+    textures: HashMap<String, AtlassedTexture>,
+    missing_texture: AtlassedTexture,
+}
+impl TextureAtlas {
+    pub fn get(&self, texture: &str) -> &AtlassedTexture {
+        self.textures.get(texture).unwrap_or(&self.missing_texture)
+    }
+}
 pub fn raycast(
     world: &game::World,
     camera: &game::ClientPlayer,
