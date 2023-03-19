@@ -36,6 +36,7 @@ pub enum NetworkMessageS2C {
     ) = 6,
     GuiData(json::JsonValue) = 7,
     BlockBreakTimeResponse(u32, f32) = 8,
+    EntityAddItem(u32, u32) = 9,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -135,6 +136,10 @@ impl NetworkMessageS2C {
                 json::parse(read_string(&mut data).as_str()).unwrap(),
             )),
             8 => Some(NetworkMessageS2C::BlockBreakTimeResponse(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
+            9 => Some(NetworkMessageS2C::EntityAddItem(
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),

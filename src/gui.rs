@@ -355,7 +355,7 @@ impl GUIComponent {
         quads: &mut Vec<GUIQuad>,
         text_renderer: &TextRenderer,
         texture_atlas: &TextureAtlas,
-        item_renderer: &Rc<RefCell<Vec<ItemRenderData>>>,
+        item_renderer: &RefCell<Vec<ItemRenderData>>,
         block_registry: &BlockRegistry,
         x: f32,
         y: f32,
@@ -428,8 +428,8 @@ impl GUIComponent {
                     );
                 }
                 if let Some(slot) = item {
-                    let item_render_data = item_renderer.borrow();
-                    let item_render_data = item_render_data.get(slot.item as usize).unwrap();
+                    let item_renderer_data = item_renderer.borrow();
+                    let item_render_data = item_renderer_data.get(slot.item as usize).unwrap();
                     match &item_render_data.model {
                         ItemModel::Texture(texture) => {
                             GUIComponent::ImageComponent(
@@ -583,7 +583,7 @@ impl GUIComponent {
 pub struct GUI<'a> {
     renderer: GUIRenderer,
     font_renderer: TextRenderer,
-    item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
+    item_renderer: &'a RefCell<Vec<ItemRenderData>>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: TextureAtlas,
     elements: HashMap<String, GUIElement>,
@@ -598,7 +598,7 @@ pub struct GUI<'a> {
 impl<'a> GUI<'a> {
     pub fn new(
         text_renderer: TextRenderer,
-        item_renderer: Rc<RefCell<Vec<ItemRenderData>>>,
+        item_renderer: &'a RefCell<Vec<ItemRenderData>>,
         texture_atlas: TextureAtlas,
         sdl: &'a sdl2::Sdl,
         size: (u32, u32),

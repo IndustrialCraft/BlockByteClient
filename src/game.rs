@@ -436,6 +436,9 @@ impl<'a> Chunk<'a> {
             self.rebuild_chunk_mesh();
             self.modified = false;
         }
+        if self.vertex_count == 0 {
+            return;
+        }
         self.vao.bind();
         //self.vbo.bind();
         shader.set_uniform_matrix(
@@ -601,6 +604,7 @@ pub struct Entity {
     pub entity_type: u32,
     pub position: Position,
     pub rotation: f32,
+    pub items: Vec<u32>,
 }
 #[derive(Clone)]
 pub struct BlockModelCube {
@@ -1020,7 +1024,22 @@ impl EntityModel {
             bones,
         }
     }
+    pub fn empty() -> Self {
+        let vao = glwrappers::VertexArray::new().expect("couldnt create vao for entity renderer");
+        vao.bind();
+        let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
+            .expect("couldnt create vbo for chunk");
+        EntityModel {
+            vao,
+            vbo,
+            vertex_count: 0,
+            bones: HashMap::new(),
+        }
+    }
     pub fn render(&self, position: Position, rotation: f32, shader: &glwrappers::Shader) {
+        if self.vertex_count == 0 {
+            return;
+        }
         self.vao.bind();
         self.vbo.bind();
         shader.set_uniform_matrix(

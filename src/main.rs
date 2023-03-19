@@ -18,6 +18,7 @@ use game::AtlassedTexture;
 use game::Block;
 use game::BlockRegistry;
 use game::BlockRenderType;
+use game::EntityModel;
 use game::StaticBlockModel;
 use glwrappers::Buffer;
 use glwrappers::VertexArray;
@@ -129,21 +130,12 @@ fn main() {
     video_subsystem
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
-    let player_texture = texture_atlas.get("player");
-    let model = game::EntityModel::new(
-        json::parse(
-            std::fs::read_to_string(std::path::Path::new("player.bbmodel"))
-                .unwrap()
-                .as_str(),
-        )
-        .unwrap(),
-        &player_texture,
-    );
     let block_registry: Arc<Mutex<game::BlockRegistry>> =
         Arc::new(Mutex::new(game::BlockRegistry {
             blocks: vec![game::Block::new_air()],
         }));
-    let item_registry = Rc::new(RefCell::new(Vec::new()));
+    let mut entity_registry: Vec<game::EntityModel> = Vec::new();
+    let item_registry = RefCell::new(Vec::new());
     let mut outline_renderer = BlockOutline::new();
     let mut world = game::World::new(&block_registry);
     let mut event_pump = sdl.event_pump().unwrap();
@@ -152,7 +144,7 @@ fn main() {
         gui::TextRenderer {
             texture: texture_atlas.get("font").clone(),
         },
-        item_registry.clone(),
+        &item_registry,
         texture_atlas.clone(),
         &sdl,
         (win_width, win_height),
@@ -175,6 +167,7 @@ fn main() {
     let (chunk_builder_output_tx, chunk_builder_output_rx) = std::sync::mpsc::channel();
     let chunk_builder_block_registry = block_registry.clone();
     let mut entities: HashMap<u32, game::Entity> = HashMap::new();
+    let mut world_item_renderer = WorldItemRenderer::new();
     std::thread::Builder::new()
         .name("chunk_builder".to_string())
         .stack_size(10000000)
@@ -523,6 +516,7 @@ fn main() {
                                             entity_type,
                                             rotation,
                                             position: Position { x, y, z },
+                                            items: Vec::new(),
                                         },
                                     );
                                 }
@@ -537,7 +531,7 @@ fn main() {
                                 NetworkMessageS2C::DeleteEntity(id) => {
                                     entities.remove(&id);
                                 }
-                                NetworkMessageS2C::InitializeContent(blocks, _entities, items) => {
+                                NetworkMessageS2C::InitializeContent(blocks, entities, items) => {
                                     let mut guard = block_registry.lock().unwrap();
                                     let block_registry_blocks = &mut guard.blocks;
                                     for block in &blocks {
@@ -621,9 +615,24 @@ fn main() {
                                             _ => unreachable!(),
                                         }
                                     }
-                                    let mut item_registry = item_registry.borrow_mut();
                                     for item in items {
-                                        item_registry.push(item);
+                                        item_registry.borrow_mut().push(item);
+                                    }
+                                    for entity_render_data in entities {
+                                        let model = match std::fs::read_to_string(Path::new(
+                                            entity_render_data.model.as_str(),
+                                        )) {
+                                            Ok(str) => EntityModel::new(
+                                                json::parse(str.as_str()).unwrap(),
+                                                texture_atlas.get(&entity_render_data.texture),
+                                            ),
+                                            Err(_) => EntityModel::new(
+                                                json::parse(include_str!("missing.bbmodel"))
+                                                    .unwrap(),
+                                                &texture_atlas.missing_texture,
+                                            ),
+                                        };
+                                        entity_registry.push(model);
                                     }
                                 }
                                 NetworkMessageS2C::GuiData(data) => {
@@ -631,6 +640,9 @@ fn main() {
                                 }
                                 NetworkMessageS2C::BlockBreakTimeResponse(id, time) => {
                                     block_breaking_manager.on_block_break_time_response(id, time);
+                                }
+                                NetworkMessageS2C::EntityAddItem(entity_id, item_id) => {
+                                    entities.get_mut(&entity_id).unwrap().items.push(item_id);
                                 }
                             }
                         }
@@ -705,14 +717,26 @@ fn main() {
                 1000.,
             ) * camera.create_view_matrix();
             model_shader.set_uniform_matrix(projection_view_loc, projection);
+            let mut items_to_render_in_world = Vec::new();
             for entity in &entities {
-                model.render(
-                    entity.1.position,
-                    entity.1.rotation.to_radians(),
-                    &model_shader,
-                );
+                entity_registry
+                    .get(entity.1.entity_type as usize)
+                    .unwrap()
+                    .render(
+                        entity.1.position,
+                        entity.1.rotation.to_radians(),
+                        &model_shader,
+                    );
+                for item in &entity.1.items {
+                    items_to_render_in_world.push((entity.1.position.clone(), *item));
+                }
             }
-
+            world_item_renderer.render(
+                items_to_render_in_world,
+                &item_registry.borrow(),
+                &projection,
+                &texture_atlas,
+            );
             outline_shader.use_program();
             let projection_view_loc = outline_shader
                 .get_uniform_location("projection_view\0")
@@ -767,8 +791,8 @@ fn pack_textures(textures: Vec<(&str, &std::path::Path)>) -> (TextureAtlas, Rgba
     packer
         .pack_own(
             "missing",
-            ImageImporter::import_from_file(Path::new("missing.png"))
-                .expect("missing texture not found"),
+            ImageImporter::import_from_memory(include_bytes!("missing.png"))
+                .expect("missing texture corrupted"),
         )
         .unwrap();
     for (name, frame) in packer.get_frames() {
@@ -790,6 +814,97 @@ fn pack_textures(textures: Vec<(&str, &std::path::Path)>) -> (TextureAtlas, Rgba
         },
         exporter.to_rgba8(),
     )
+}
+struct WorldItemRenderer {
+    vao: glwrappers::VertexArray,
+    vbo: glwrappers::Buffer,
+    shader: glwrappers::Shader,
+}
+impl WorldItemRenderer {
+    pub fn new() -> Self {
+        let vao = glwrappers::VertexArray::new().expect("couldnt create vao for outline renderer");
+        vao.bind();
+        let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
+            .expect("couldnt create vbo for chunk");
+        vbo.bind();
+        unsafe {
+            ogl33::glVertexAttribPointer(
+                0,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::BasicVertex>()
+                    .try_into()
+                    .unwrap(),
+                0 as *const _,
+            );
+            ogl33::glVertexAttribPointer(
+                1,
+                2,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::BasicVertex>()
+                    .try_into()
+                    .unwrap(),
+                std::mem::size_of::<[f32; 3]>() as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glEnableVertexAttribArray(0);
+        }
+        WorldItemRenderer {
+            vao,
+            vbo,
+            shader: glwrappers::Shader::new(
+                include_str!("shaders/basic.vert").to_string(),
+                include_str!("shaders/basic.frag").to_string(),
+            ),
+        }
+    }
+    pub fn render(
+        &mut self,
+        items: Vec<(Position, u32)>,
+        item_registry: &Vec<ItemRenderData>,
+        projection: &Mat4,
+        texture_atlas: &TextureAtlas,
+    ) {
+        let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
+        let mut vertex_count = 0;
+        for item in &items {
+            let item_texture = &item_registry.get(item.1 as usize).unwrap().model;
+            let position = &item.0;
+            match item_texture {
+                ItemModel::Texture(texture) => {
+                    let uv = texture_atlas.get(texture.as_str()).get_coords();
+                    vertices.push([position.x, position.y, position.z, uv.0, uv.1]);
+                    vertices.push([position.x + 0.5, position.y, position.z, uv.2, uv.1]);
+                    vertices.push([position.x + 0.5, position.y, position.z + 0.5, uv.2, uv.3]);
+                    vertices.push([position.x + 0.5, position.y, position.z + 0.5, uv.2, uv.3]);
+                    vertices.push([position.x, position.y, position.z + 0.5, uv.0, uv.3]);
+                    vertices.push([position.x, position.y, position.z, uv.0, uv.1]);
+                    vertex_count += 6;
+                }
+                ItemModel::Block(block) => {}
+            }
+        }
+        self.vao.bind();
+        self.vbo.upload_data(
+            bytemuck::cast_slice(vertices.as_slice()),
+            ogl33::GL_DYNAMIC_DRAW,
+        );
+        self.shader.use_program();
+        self.shader.set_uniform_matrix(
+            self.shader
+                .get_uniform_location("projection_view\0")
+                .unwrap(),
+            projection.clone(),
+        );
+        unsafe {
+            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+            ogl33::glEnable(ogl33::GL_BLEND);
+            ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, vertex_count);
+            ogl33::glDisable(ogl33::GL_BLEND);
+        }
+    }
 }
 #[derive(Clone)]
 pub struct TextureAtlas {
@@ -1073,7 +1188,7 @@ impl BlockBreakingManager {
                 3,
                 ogl33::GL_FLOAT,
                 ogl33::GL_FALSE,
-                std::mem::size_of::<glwrappers::BreakingVertex>()
+                std::mem::size_of::<glwrappers::BasicVertex>()
                     .try_into()
                     .unwrap(),
                 0 as *const _,
@@ -1083,7 +1198,7 @@ impl BlockBreakingManager {
                 2,
                 ogl33::GL_FLOAT,
                 ogl33::GL_FALSE,
-                std::mem::size_of::<glwrappers::BreakingVertex>()
+                std::mem::size_of::<glwrappers::BasicVertex>()
                     .try_into()
                     .unwrap(),
                 std::mem::size_of::<[f32; 3]>() as *const _,
@@ -1098,8 +1213,8 @@ impl BlockBreakingManager {
             key_down: false,
             time_requested: false,
             block_breaking_shader: glwrappers::Shader::new(
-                include_str!("shaders/block_breaking.vert").to_string(),
-                include_str!("shaders/block_breaking.frag").to_string(),
+                include_str!("shaders/basic.vert").to_string(),
+                include_str!("shaders/basic.frag").to_string(),
             ),
             vao,
             vbo,
@@ -1154,7 +1269,7 @@ impl BlockBreakingManager {
                     vertex.y += target_block.0.y as f32;
                     vertex.z += target_block.0.z as f32;
                 }
-                let mut vertices: Vec<glwrappers::BreakingVertex> = Vec::new();
+                let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
                 vertices.push([
                     face_vertices[0].x,
                     face_vertices[0].y,
