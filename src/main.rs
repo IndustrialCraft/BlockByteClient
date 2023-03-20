@@ -736,6 +736,7 @@ fn main() {
                 &item_registry.borrow(),
                 &projection,
                 &texture_atlas,
+                &block_registry.lock().unwrap(),
             );
             outline_shader.use_program();
             let projection_view_loc = outline_shader
@@ -860,12 +861,36 @@ impl WorldItemRenderer {
             ),
         }
     }
+    fn add_face(
+        vertices: &mut Vec<glwrappers::BasicVertex>,
+        x1: f32,
+        y1: f32,
+        z1: f32,
+        x2: f32,
+        y2: f32,
+        z2: f32,
+        x3: f32,
+        y3: f32,
+        z3: f32,
+        x4: f32,
+        y4: f32,
+        z4: f32,
+        uv: (f32, f32, f32, f32),
+    ) {
+        vertices.push([x1, y1, z1, uv.0, uv.1]);
+        vertices.push([x2, y2, z2, uv.2, uv.1]);
+        vertices.push([x3, y3, z3, uv.2, uv.3]);
+        vertices.push([x3, y3, z3, uv.2, uv.3]);
+        vertices.push([x4, y4, z4, uv.0, uv.3]);
+        vertices.push([x1, y1, z1, uv.0, uv.1]);
+    }
     pub fn render(
         &mut self,
         items: Vec<(Position, u32)>,
         item_registry: &Vec<ItemRenderData>,
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
+        block_registry: &BlockRegistry,
     ) {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
@@ -875,15 +900,130 @@ impl WorldItemRenderer {
             match item_texture {
                 ItemModel::Texture(texture) => {
                     let uv = texture_atlas.get(texture.as_str()).get_coords();
-                    vertices.push([position.x, position.y, position.z, uv.0, uv.1]);
-                    vertices.push([position.x + 0.5, position.y, position.z, uv.2, uv.1]);
-                    vertices.push([position.x + 0.5, position.y, position.z + 0.5, uv.2, uv.3]);
-                    vertices.push([position.x + 0.5, position.y, position.z + 0.5, uv.2, uv.3]);
-                    vertices.push([position.x, position.y, position.z + 0.5, uv.0, uv.3]);
-                    vertices.push([position.x, position.y, position.z, uv.0, uv.1]);
+                    WorldItemRenderer::add_face(
+                        &mut vertices,
+                        position.x,
+                        position.y,
+                        position.z,
+                        position.x + 0.5,
+                        position.y,
+                        position.z,
+                        position.x + 0.5,
+                        position.y,
+                        position.z + 0.5,
+                        position.x,
+                        position.y,
+                        position.z + 0.5,
+                        uv,
+                    );
                     vertex_count += 6;
                 }
-                ItemModel::Block(block) => {}
+                ItemModel::Block(block) => {
+                    let block = block_registry.get_block(*block);
+                    match block.render_type {
+                        BlockRenderType::Air => {}
+                        BlockRenderType::Cube(north, south, right, left, up, down) => {
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x,
+                                position.y,
+                                position.z,
+                                position.x + 0.5,
+                                position.y,
+                                position.z,
+                                position.x + 0.5,
+                                position.y,
+                                position.z + 0.5,
+                                position.x,
+                                position.y,
+                                position.z + 0.5,
+                                down.get_coords(),
+                            );
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x,
+                                position.y + 0.5,
+                                position.z,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                position.x,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                up.get_coords(),
+                            );
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x,
+                                position.y + 0.5,
+                                position.z,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z,
+                                position.x + 0.5,
+                                position.y,
+                                position.z,
+                                position.x,
+                                position.y,
+                                position.z,
+                                north.get_coords(),
+                            );
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                position.x + 0.5,
+                                position.y,
+                                position.z + 0.5,
+                                position.x,
+                                position.y,
+                                position.z + 0.5,
+                                south.get_coords(),
+                            );
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x,
+                                position.y + 0.5,
+                                position.z,
+                                position.x,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                position.x,
+                                position.y,
+                                position.z + 0.5,
+                                position.x,
+                                position.y,
+                                position.z,
+                                left.get_coords(),
+                            );
+                            WorldItemRenderer::add_face(
+                                &mut vertices,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z,
+                                position.x + 0.5,
+                                position.y + 0.5,
+                                position.z + 0.5,
+                                position.x + 0.5,
+                                position.y,
+                                position.z + 0.5,
+                                position.x + 0.5,
+                                position.y,
+                                position.z,
+                                right.get_coords(),
+                            );
+                            vertex_count += 6 * 6;
+                        }
+                        BlockRenderType::StaticModel(_, _, _, _, _, _, _) => {}
+                    }
+                }
             }
         }
         self.vao.bind();
