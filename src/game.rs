@@ -893,6 +893,7 @@ pub struct EntityModel {
     vbo: glwrappers::Buffer,
     vertex_count: u32,
     bones: HashMap<Uuid, ModelBone>,
+    pub render_data: EntityRenderData,
 }
 struct ModelBone {
     id: Uuid,
@@ -952,7 +953,11 @@ impl ModelBone {
     }
 }
 impl EntityModel {
-    pub fn new(json: json::JsonValue, texture_atlas: &AtlassedTexture) -> Self {
+    pub fn new(
+        json: json::JsonValue,
+        texture_atlas: &AtlassedTexture,
+        render_data: EntityRenderData,
+    ) -> Self {
         let vao = glwrappers::VertexArray::new().expect("couldnt create vao for entity renderer");
         vao.bind();
         let mut vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
@@ -1022,18 +1027,7 @@ impl EntityModel {
             vbo,
             vertex_count: vertices.len() as u32,
             bones,
-        }
-    }
-    pub fn empty() -> Self {
-        let vao = glwrappers::VertexArray::new().expect("couldnt create vao for entity renderer");
-        vao.bind();
-        let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
-            .expect("couldnt create vbo for chunk");
-        EntityModel {
-            vao,
-            vbo,
-            vertex_count: 0,
-            bones: HashMap::new(),
+            render_data,
         }
     }
     pub fn render(&self, position: Position, rotation: f32, shader: &glwrappers::Shader) {

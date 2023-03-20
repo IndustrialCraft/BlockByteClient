@@ -12,6 +12,9 @@ pub struct BlockRenderData {
 pub struct EntityRenderData {
     pub model: String,
     pub texture: String,
+    pub hitbox_w: f32,
+    pub hitbox_h: f32,
+    pub hitbox_d: f32,
 }
 pub struct ItemRenderData {
     pub name: String,
@@ -113,7 +116,13 @@ impl NetworkMessageS2C {
                 for _ in 0..size {
                     let model = read_string(&mut data);
                     let texture = read_string(&mut data);
-                    entities.push(EntityRenderData { model, texture });
+                    entities.push(EntityRenderData {
+                        model,
+                        texture,
+                        hitbox_w: data.read_be().unwrap(),
+                        hitbox_h: data.read_be().unwrap(),
+                        hitbox_d: data.read_be().unwrap(),
+                    });
                 }
                 let size: u16 = data.read_be().unwrap();
                 for _ in 0..size {
@@ -156,6 +165,8 @@ pub enum NetworkMessageC2S {
     GuiClick(String, MouseButton),
     GuiClose,
     RequestBlockBreakTime(u32, BlockPosition),
+    LeftClickEntity(u32),
+    RightClickEntity(u32),
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -214,6 +225,14 @@ impl NetworkMessageC2S {
                 data.write_be(block_position.x).unwrap();
                 data.write_be(block_position.y).unwrap();
                 data.write_be(block_position.z).unwrap();
+            }
+            Self::LeftClickEntity(id) => {
+                data.write_be(8u8).unwrap();
+                data.write_be(*id).unwrap();
+            }
+            Self::RightClickEntity(id) => {
+                data.write_be(9u8).unwrap();
+                data.write_be(*id).unwrap();
             }
         };
         data
