@@ -32,14 +32,9 @@ pub enum NetworkMessageS2C {
     AddEntity(u32, u32, f32, f32, f32, f32) = 3,
     MoveEntity(u32, f32, f32, f32, f32) = 4,
     DeleteEntity(u32) = 5,
-    InitializeContent(
-        Vec<BlockRenderData>,
-        Vec<EntityRenderData>,
-        Vec<ItemRenderData>,
-    ) = 6,
-    GuiData(json::JsonValue) = 7,
-    BlockBreakTimeResponse(u32, f32) = 8,
-    EntityAddItem(u32, u32) = 9,
+    GuiData(json::JsonValue) = 6,
+    BlockBreakTimeResponse(u32, f32) = 7,
+    EntityAddItem(u32, u32) = 8,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -101,54 +96,14 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             5 => Some(NetworkMessageS2C::DeleteEntity(data.read_be().unwrap())),
-            6 => {
-                let mut blocks = Vec::new();
-                let mut entities = Vec::new();
-                let mut items = Vec::new();
-                let size: u16 = data.read_be().unwrap();
-                for _ in 0..size {
-                    let json = read_string(&mut data);
-                    blocks.push(BlockRenderData {
-                        json: json::parse(json.as_str()).unwrap(),
-                    });
-                }
-                let size: u16 = data.read_be().unwrap();
-                for _ in 0..size {
-                    let model = read_string(&mut data);
-                    let texture = read_string(&mut data);
-                    entities.push(EntityRenderData {
-                        model,
-                        texture,
-                        hitbox_w: data.read_be().unwrap(),
-                        hitbox_h: data.read_be().unwrap(),
-                        hitbox_d: data.read_be().unwrap(),
-                    });
-                }
-                let size: u16 = data.read_be().unwrap();
-                for _ in 0..size {
-                    let name = read_string(&mut data);
-                    let model_type = read_string(&mut data);
-                    items.push(ItemRenderData {
-                        name,
-                        model: match model_type.as_str() {
-                            "texture" => ItemModel::Texture(read_string(&mut data)),
-                            "block" => ItemModel::Block(data.read_be().unwrap()),
-                            _ => panic!(),
-                        },
-                    });
-                }
-                Some(NetworkMessageS2C::InitializeContent(
-                    blocks, entities, items,
-                ))
-            }
-            7 => Some(NetworkMessageS2C::GuiData(
+            6 => Some(NetworkMessageS2C::GuiData(
                 json::parse(read_string(&mut data).as_str()).unwrap(),
             )),
-            8 => Some(NetworkMessageS2C::BlockBreakTimeResponse(
+            7 => Some(NetworkMessageS2C::BlockBreakTimeResponse(
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),
-            9 => Some(NetworkMessageS2C::EntityAddItem(
+            8 => Some(NetworkMessageS2C::EntityAddItem(
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),

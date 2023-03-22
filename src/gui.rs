@@ -355,7 +355,7 @@ impl GUIComponent {
         quads: &mut Vec<GUIQuad>,
         text_renderer: &TextRenderer,
         texture_atlas: &TextureAtlas,
-        item_renderer: &RefCell<Vec<ItemRenderData>>,
+        item_renderer: &HashMap<u32, ItemRenderData>,
         block_registry: &BlockRegistry,
         x: f32,
         y: f32,
@@ -428,8 +428,7 @@ impl GUIComponent {
                     );
                 }
                 if let Some(slot) = item {
-                    let item_renderer_data = item_renderer.borrow();
-                    let item_render_data = item_renderer_data.get(slot.item as usize).unwrap();
+                    let item_render_data = item_renderer.get(&slot.item).unwrap();
                     match &item_render_data.model {
                         ItemModel::Texture(texture) => {
                             GUIComponent::ImageComponent(
@@ -583,7 +582,7 @@ impl GUIComponent {
 pub struct GUI<'a> {
     renderer: GUIRenderer,
     font_renderer: TextRenderer,
-    item_renderer: &'a RefCell<Vec<ItemRenderData>>,
+    item_renderer: &'a HashMap<u32, ItemRenderData>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: TextureAtlas,
     elements: HashMap<String, GUIElement>,
@@ -592,18 +591,18 @@ pub struct GUI<'a> {
     mouse_locked: bool,
     pub size: (u32, u32),
     window: &'a RefCell<sdl2::video::Window>,
-    block_registry: Arc<Mutex<game::BlockRegistry>>,
+    block_registry: &'a game::BlockRegistry,
     pub gui_scale: f32,
 }
 impl<'a> GUI<'a> {
     pub fn new(
         text_renderer: TextRenderer,
-        item_renderer: &'a RefCell<Vec<ItemRenderData>>,
+        item_renderer: &'a HashMap<u32, ItemRenderData>,
         texture_atlas: TextureAtlas,
         sdl: &'a sdl2::Sdl,
         size: (u32, u32),
         window: &'a RefCell<sdl2::video::Window>,
-        block_registry: Arc<Mutex<game::BlockRegistry>>,
+        block_registry: &'a game::BlockRegistry,
     ) -> Self {
         Self {
             cursor: None,
@@ -717,8 +716,8 @@ impl<'a> GUI<'a> {
                 &mut quads,
                 &self.font_renderer,
                 &self.texture_atlas,
-                &self.item_renderer,
-                &self.block_registry.lock().unwrap(),
+                self.item_renderer,
+                self.block_registry,
                 element.x,
                 element.y,
             );
@@ -728,8 +727,8 @@ impl<'a> GUI<'a> {
                 &mut quads,
                 &self.font_renderer,
                 &self.texture_atlas,
-                &self.item_renderer,
-                &self.block_registry.lock().unwrap(),
+                self.item_renderer,
+                self.block_registry,
                 cursor.1 - (cursor.0.get_width() / 2.),
                 cursor.2 - (cursor.0.get_height() / 2.),
             );
@@ -745,12 +744,7 @@ impl<'a> GUI<'a> {
                             if let Some(item) = item {
                                 GUIComponent::TextComponent(
                                     1.,
-                                    self.item_renderer
-                                        .borrow()
-                                        .get(item.item as usize)
-                                        .unwrap()
-                                        .name
-                                        .clone(),
+                                    self.item_renderer.get(&item.item).unwrap().name.clone(),
                                     Color {
                                         r: 1.,
                                         g: 1.,
@@ -762,8 +756,8 @@ impl<'a> GUI<'a> {
                                     &mut quads,
                                     &self.font_renderer,
                                     &self.texture_atlas,
-                                    &self.item_renderer,
-                                    &self.block_registry.lock().unwrap(),
+                                    self.item_renderer,
+                                    self.block_registry,
                                     cursor.1,
                                     cursor.2,
                                 )

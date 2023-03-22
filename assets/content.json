@@ -1,0 +1,116 @@
+{
+  "blocks": [
+    {
+      "id": 5,
+      "model": {
+        "type": "cube",
+        "north": "grass_side",
+        "south": "grass_side",
+        "left": "grass_side",
+        "right": "grass_side",
+        "up": "grass_side",
+        "down": "grass_side"
+      }
+    },
+    {
+      "id": 1,
+      "model": {
+        "type": "cube",
+        "north": "grass_side",
+        "south": "grass_side",
+        "left": "grass_side",
+        "right": "grass_side",
+        "up": "grass",
+        "down": "dirt"
+      }
+    },
+    {
+      "id": 2,
+      "model": {
+        "type": "cube",
+        "north": "dirt",
+        "south": "dirt",
+        "left": "dirt",
+        "right": "dirt",
+        "up": "dirt",
+        "down": "dirt"
+      }
+    },
+    {
+      "id": 4,
+      "model": {
+        "type": "static",
+        "model": "stand",
+        "texture": "cobble",
+        "up": true,
+        "down": true,
+        "left": false,
+        "right": false,
+        "north": false,
+        "south": false
+      }
+    },
+    {
+      "id": 3,
+      "model": {
+        "type": "cube",
+        "north": "cobble",
+        "south": "cobble",
+        "left": "cobble",
+        "right": "cobble",
+        "up": "cobble",
+        "down": "cobble"
+      }
+    }
+  ],
+  "items": [
+    {
+      "id": 1,
+      "name": "counter",
+      "modelType": "texture",
+      "modelValue": "grass_side"
+    },
+    {
+      "id": 0,
+      "name": "grass block",
+      "modelType": "block",
+      "modelValue": 1
+    },
+    {
+      "id": 2,
+      "name": "dirt block",
+      "modelType": "texture",
+      "modelValue": "dirt"
+    },
+    {
+      "id": 4,
+      "name": "stand",
+      "modelType": "texture",
+      "modelValue": "grass_side"
+    },
+    {
+      "id": 3,
+      "name": "cobblestone",
+      "modelType": "block",
+      "modelValue": 3
+    }
+  ],
+  "entities": [
+    {
+      "id": 0,
+      "model": "player.bbmodel",
+      "texture": "player",
+      "hitboxW": 0.6,
+      "hitboxH": 2.7,
+      "hitboxD": 0.6
+    },
+    {
+      "id": 1,
+      "model": "item.bbmodel",
+      "texture": "",
+      "hitboxW": 0.5,
+      "hitboxH": 0.5,
+      "hitboxD": 0.5
+    }
+  ]
+}

@@ -232,12 +232,12 @@ pub struct Chunk<'a> {
     vbo: glwrappers::Buffer,
     vertex_count: u32,
     position: ChunkPosition,
-    block_registry: &'a Mutex<BlockRegistry>,
+    block_registry: &'a BlockRegistry,
     modified: bool,
     loaded: bool,
 }
 impl<'a> Chunk<'a> {
-    pub fn new(position: ChunkPosition, block_registry: &'a Mutex<BlockRegistry>) -> Self {
+    pub fn new(position: ChunkPosition, block_registry: &'a BlockRegistry) -> Self {
         let vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
         vao.bind();
         let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
@@ -311,7 +311,6 @@ impl<'a> Chunk<'a> {
         return self.blocks[x as usize][y as usize][z as usize];
     }
     fn rebuild_chunk_mesh(&mut self) {
-        let block_registry = self.block_registry.lock().unwrap();
         let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
         for bx in 0..16i32 {
             let x = bx as f32;
@@ -320,7 +319,7 @@ impl<'a> Chunk<'a> {
                 for bz in 0..16i32 {
                     let z = bz as f32;
                     let block_id = self.blocks[bx as usize][by as usize][bz as usize];
-                    let block = block_registry.get_block(block_id);
+                    let block = self.block_registry.get_block(block_id);
                     let position = BlockPosition {
                         x: bx,
                         y: by,
@@ -340,7 +339,7 @@ impl<'a> Chunk<'a> {
                                 let face_offset = face.get_offset();
                                 let neighbor_pos = position + face_offset;
                                 let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
-                                    block_registry
+                                    self.block_registry
                                         .get_block(
                                             self.blocks[neighbor_pos.x as usize]
                                                 [neighbor_pos.y as usize]
@@ -507,11 +506,11 @@ impl Block {
 }
 #[derive(Clone)]
 pub struct BlockRegistry {
-    pub blocks: std::vec::Vec<Block>,
+    pub blocks: HashMap<u32, Block>,
 }
 impl BlockRegistry {
     pub fn get_block(&self, id: u32) -> &Block {
-        &self.blocks[id as usize]
+        &self.blocks[&id]
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -548,10 +547,10 @@ impl AtlassedTexture {
 
 pub struct World<'a> {
     chunks: std::collections::HashMap<ChunkPosition, Chunk<'a>>,
-    block_registry: &'a Mutex<BlockRegistry>,
+    block_registry: &'a BlockRegistry,
 }
 impl<'a> World<'a> {
-    pub fn new(block_registry: &'a Mutex<BlockRegistry>) -> Self {
+    pub fn new(block_registry: &'a BlockRegistry) -> Self {
         World {
             chunks: std::collections::HashMap::new(),
             block_registry,
@@ -560,7 +559,7 @@ impl<'a> World<'a> {
     pub fn load_chunk(&mut self, position: ChunkPosition) -> &mut Chunk<'a> {
         if !self.chunks.contains_key(&position) {
             self.chunks
-                .insert(position, Chunk::new(position, &self.block_registry));
+                .insert(position, Chunk::new(position, self.block_registry));
         }
         self.chunks.get_mut(&position).unwrap()
     }

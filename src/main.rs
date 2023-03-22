@@ -37,20 +37,12 @@ use util::*;
 
 use endio::BERead;
 
-use std::rc::Rc;
-
 use sdl2::event::*;
 
 fn main() {
-    let addr = std::env::args().nth(1).unwrap();
-    let tcp_stream = std::net::TcpStream::connect(addr).unwrap();
-    let (mut socket, _response) = tungstenite::client::client_with_config(
-        url::Url::parse("ws://aaa123").unwrap(),
-        tcp_stream,
-        None,
-    )
-    .unwrap();
-    socket.get_mut().set_nonblocking(true).unwrap();
+    let mut args = std::env::args();
+    args.next();
+
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
     let window = RefCell::new(
@@ -63,7 +55,6 @@ fn main() {
             .unwrap(),
     );
     let _gl_context = { window.borrow().gl_create_context().unwrap() }; //do not drop
-
     let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
         x: 0f32,
         y: 50f32,
@@ -82,8 +73,145 @@ fn main() {
         ogl33::glFrontFace(ogl33::GL_CW);
         ogl33::glCullFace(ogl33::GL_BACK);
         ogl33::glClearColor(0.2, 0.3, 0.3, 1.0);
-        ogl33::glViewport(0, 0, win_width as i32, win_height as i32);
+        ogl33::glViewport(0, 0, win_width as i32, win_height as i32)
     }
+
+    let mut assets = std::path::Path::new(args.next().unwrap().as_str()).to_path_buf();
+    let (texture_atlas, packed_texture) = {
+        let mut textures_to_pack = Vec::new();
+        for asset in std::fs::read_dir(&assets).unwrap() {
+            let asset = asset.unwrap();
+            let name = asset.file_name();
+            if name.to_str().unwrap().ends_with(".png") {
+                textures_to_pack.push((
+                    name.to_str().unwrap().replace(".png", ""),
+                    asset.path().to_path_buf(),
+                ));
+            }
+        }
+        pack_textures(textures_to_pack)
+    };
+    let (block_registry, entity_registry, item_registry) = {
+        assets.push("content.json");
+        let content = json::parse(std::fs::read_to_string(&assets).unwrap().as_str()).unwrap();
+        assets.pop();
+
+        let mut block_registry = BlockRegistry {
+            blocks: HashMap::new(),
+        };
+        block_registry.blocks.insert(0, Block::new_air());
+        for block in content["blocks"].members() {
+            let id = block["id"].as_u32().unwrap();
+            let model = &block["model"];
+            match model["type"].as_str().unwrap() {
+                "cube" => {
+                    block_registry.blocks.insert(
+                        id,
+                        game::Block {
+                            render_data: 0,
+                            render_type: game::BlockRenderType::Cube(
+                                texture_atlas.get(model["north"].as_str().unwrap()).clone(),
+                                texture_atlas.get(model["south"].as_str().unwrap()).clone(),
+                                texture_atlas.get(model["right"].as_str().unwrap()).clone(),
+                                texture_atlas.get(model["left"].as_str().unwrap()).clone(),
+                                texture_atlas.get(model["up"].as_str().unwrap()).clone(),
+                                texture_atlas.get(model["down"].as_str().unwrap()).clone(),
+                            ),
+                        },
+                    );
+                }
+                "static" => {
+                    let texture = texture_atlas
+                        .get(model["texture"].as_str().unwrap())
+                        .clone();
+                    block_registry.blocks.insert(
+                        id,
+                        Block {
+                            render_data: 0,
+                            render_type: BlockRenderType::StaticModel(
+                                StaticBlockModel::new(
+                                    &json::parse(
+                                        {
+                                            assets.push(
+                                                model["model"].as_str().unwrap().to_string()
+                                                    + ".bbmodel",
+                                            );
+                                            let json = std::fs::read_to_string(&assets).unwrap();
+                                            assets.pop();
+                                            json
+                                        }
+                                        .as_str(),
+                                    )
+                                    .unwrap(),
+                                    &texture,
+                                ),
+                                model["north"].as_bool().unwrap(),
+                                model["south"].as_bool().unwrap(),
+                                model["right"].as_bool().unwrap(),
+                                model["left"].as_bool().unwrap(),
+                                model["up"].as_bool().unwrap(),
+                                model["down"].as_bool().unwrap(),
+                            ),
+                        },
+                    );
+                }
+                _ => unreachable!(),
+            }
+        }
+        let mut entity_registry: HashMap<u32, EntityModel> = HashMap::new();
+        for entity in content["entities"].members() {
+            let id = entity["id"].as_u32().unwrap();
+            let entity_render_data = EntityRenderData {
+                model: entity["model"].as_str().unwrap().to_string(),
+                texture: entity["texture"].as_str().unwrap().to_string(),
+                hitbox_w: entity["hitboxW"].as_f32().unwrap(),
+                hitbox_h: entity["hitboxH"].as_f32().unwrap(),
+                hitbox_d: entity["hitboxD"].as_f32().unwrap(),
+            };
+            assets.push(&entity_render_data.model);
+            let model = match std::fs::read_to_string(assets.as_path()) {
+                Ok(str) => EntityModel::new(
+                    json::parse(str.as_str()).unwrap(),
+                    texture_atlas.get(&entity_render_data.texture),
+                    entity_render_data,
+                ),
+                Err(_) => EntityModel::new(
+                    json::parse(include_str!("missing.bbmodel")).unwrap(),
+                    &texture_atlas.missing_texture,
+                    entity_render_data,
+                ),
+            };
+            assets.pop();
+            entity_registry.insert(id, model);
+        }
+        let mut item_registry: HashMap<u32, ItemRenderData> = HashMap::new();
+        for item in content["items"].members() {
+            let id = item["id"].as_u32().unwrap();
+            let item_render_data = ItemRenderData {
+                name: item["name"].as_str().unwrap().to_string(),
+                model: match item["modelType"].as_str().unwrap() {
+                    "texture" => {
+                        ItemModel::Texture(item["modelValue"].as_str().unwrap().to_string())
+                    }
+                    "block" => ItemModel::Block(item["modelValue"].as_u32().unwrap()),
+                    _ => unreachable!(),
+                },
+            };
+            item_registry.insert(id, item_render_data);
+        }
+        (block_registry, entity_registry, item_registry)
+    };
+
+    let addr = args.next().unwrap();
+    let tcp_stream = std::net::TcpStream::connect(addr).unwrap();
+    let (mut socket, _response) = tungstenite::client::client_with_config(
+        url::Url::parse("ws://aaa123").unwrap(),
+        tcp_stream,
+        None,
+    )
+    .unwrap();
+    socket.get_mut().set_nonblocking(true).unwrap();
+
     let chunk_shader = glwrappers::Shader::new(
         include_str!("shaders/chunk.vert").to_string(),
         include_str!("shaders/chunk.frag").to_string(),
@@ -100,27 +228,6 @@ fn main() {
         include_str!("shaders/gui.vert").to_string(),
         include_str!("shaders/gui.frag").to_string(),
     );
-    {}
-    let (texture_atlas, packed_texture) = pack_textures(vec![
-        ("dirt", std::path::Path::new("dirt.png")),
-        ("grass", std::path::Path::new("grass.png")),
-        ("grass_side", std::path::Path::new("grass_side.png")),
-        ("cobble", std::path::Path::new("cobble.png")),
-        ("player", std::path::Path::new("player.png")),
-        ("font", std::path::Path::new("font.png")),
-        ("slot", std::path::Path::new("slot.png")),
-        ("cursor", std::path::Path::new("cursor.png")),
-        ("arrow", std::path::Path::new("arrow.png")),
-        ("breaking1", std::path::Path::new("breaking1.png")),
-        ("breaking2", std::path::Path::new("breaking2.png")),
-        ("breaking3", std::path::Path::new("breaking3.png")),
-        ("breaking4", std::path::Path::new("breaking4.png")),
-        ("breaking5", std::path::Path::new("breaking5.png")),
-        ("breaking6", std::path::Path::new("breaking6.png")),
-        ("breaking7", std::path::Path::new("breaking7.png")),
-        ("breaking8", std::path::Path::new("breaking8.png")),
-        ("breaking9", std::path::Path::new("breaking9.png")),
-    ]);
     let texture = glwrappers::Texture::new(
         packed_texture.as_bytes().to_vec(),
         packed_texture.width(),
@@ -131,12 +238,6 @@ fn main() {
     video_subsystem
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
-    let block_registry: Arc<Mutex<game::BlockRegistry>> =
-        Arc::new(Mutex::new(game::BlockRegistry {
-            blocks: vec![game::Block::new_air()],
-        }));
-    let mut entity_registry: Vec<game::EntityModel> = Vec::new();
-    let item_registry = RefCell::new(Vec::new());
     let mut outline_renderer = BlockOutline::new();
     let mut world = game::World::new(&block_registry);
     let mut event_pump = sdl.event_pump().unwrap();
@@ -150,7 +251,7 @@ fn main() {
         &sdl,
         (win_width, win_height),
         &window,
-        block_registry.clone(),
+        &block_registry,
     );
     let mut block_breaking_manager = BlockBreakingManager::new(vec![
         texture_atlas.get("breaking1").clone(),
@@ -172,143 +273,144 @@ fn main() {
     std::thread::Builder::new()
         .name("chunk_builder".to_string())
         .stack_size(10000000)
-        .spawn(move || loop {
-            let (pos, data): (ChunkPosition, Vec<u8>) = chunk_builder_input_rx.recv().unwrap();
-            let block_registry: BlockRegistry =
-                { chunk_builder_block_registry.lock().unwrap().clone() };
-            let mut decoder = libflate::zlib::Decoder::new(data.as_slice()).unwrap();
-            let mut blocks_data = Vec::new();
-            std::io::copy(&mut decoder, &mut blocks_data).unwrap();
-            let mut blocks = [[[0u32; 16]; 16]; 16];
-            let mut blocks_data = blocks_data.as_slice();
-            for x in 0..16 {
-                for y in 0..16 {
-                    for z in 0..16 {
-                        blocks[x][y][z] = blocks_data.read_be().unwrap();
+        .spawn(move || {
+            let block_registry: BlockRegistry = chunk_builder_block_registry;
+            loop {
+                let (pos, data): (ChunkPosition, Vec<u8>) = chunk_builder_input_rx.recv().unwrap();
+                let mut decoder = libflate::zlib::Decoder::new(data.as_slice()).unwrap();
+                let mut blocks_data = Vec::new();
+                std::io::copy(&mut decoder, &mut blocks_data).unwrap();
+                let mut blocks = [[[0u32; 16]; 16]; 16];
+                let mut blocks_data = blocks_data.as_slice();
+                for x in 0..16 {
+                    for y in 0..16 {
+                        for z in 0..16 {
+                            blocks[x][y][z] = blocks_data.read_be().unwrap();
+                        }
                     }
                 }
-            }
-            let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
-            {
-                for bx in 0..16i32 {
-                    let x = bx as f32;
-                    for by in 0..16i32 {
-                        let y = by as f32;
-                        for bz in 0..16i32 {
-                            let z = bz as f32;
-                            let block_id = blocks[bx as usize][by as usize][bz as usize];
-                            let block = block_registry.get_block(block_id);
-                            let position = BlockPosition {
-                                x: bx,
-                                y: by,
-                                z: bz,
-                            };
-                            match &block.render_type {
-                                BlockRenderType::Air => {}
-                                BlockRenderType::Cube(north, south, right, left, up, down) => {
-                                    for face in [
-                                        Face::Front,
-                                        Face::Back,
-                                        Face::Up,
-                                        Face::Down,
-                                        Face::Left,
-                                        Face::Right,
-                                    ] {
-                                        let face_offset = face.get_offset();
-                                        let neighbor_pos = position + face_offset;
-                                        let neighbor_side_full =
-                                            if neighbor_pos.is_inside_origin_chunk() {
-                                                block_registry
-                                                    .get_block(
-                                                        blocks[neighbor_pos.x as usize]
-                                                            [neighbor_pos.y as usize]
-                                                            [neighbor_pos.z as usize],
-                                                    )
-                                                    .is_face_full(&face.opposite())
-                                            } else {
-                                                false
+                let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
+                {
+                    for bx in 0..16i32 {
+                        let x = bx as f32;
+                        for by in 0..16i32 {
+                            let y = by as f32;
+                            for bz in 0..16i32 {
+                                let z = bz as f32;
+                                let block_id = blocks[bx as usize][by as usize][bz as usize];
+                                let block = block_registry.get_block(block_id);
+                                let position = BlockPosition {
+                                    x: bx,
+                                    y: by,
+                                    z: bz,
+                                };
+                                match &block.render_type {
+                                    BlockRenderType::Air => {}
+                                    BlockRenderType::Cube(north, south, right, left, up, down) => {
+                                        for face in [
+                                            Face::Front,
+                                            Face::Back,
+                                            Face::Up,
+                                            Face::Down,
+                                            Face::Left,
+                                            Face::Right,
+                                        ] {
+                                            let face_offset = face.get_offset();
+                                            let neighbor_pos = position + face_offset;
+                                            let neighbor_side_full =
+                                                if neighbor_pos.is_inside_origin_chunk() {
+                                                    block_registry
+                                                        .get_block(
+                                                            blocks[neighbor_pos.x as usize]
+                                                                [neighbor_pos.y as usize]
+                                                                [neighbor_pos.z as usize],
+                                                        )
+                                                        .is_face_full(&face.opposite())
+                                                } else {
+                                                    false
+                                                };
+                                            let texture = match face {
+                                                Face::Front => north,
+                                                Face::Back => south,
+                                                Face::Right => right,
+                                                Face::Left => left,
+                                                Face::Up => up,
+                                                Face::Down => down,
                                             };
-                                        let texture = match face {
-                                            Face::Front => north,
-                                            Face::Back => south,
-                                            Face::Right => right,
-                                            Face::Left => left,
-                                            Face::Up => up,
-                                            Face::Down => down,
-                                        };
-                                        if !neighbor_side_full {
-                                            let face_vertices = face.get_vertices();
-                                            let uv = texture.get_coords();
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[0].x + x,
-                                                y: face_vertices[0].y + y,
-                                                z: face_vertices[0].z + z,
-                                                u: uv.0,
-                                                v: uv.1,
-                                                render_data: block.render_data,
-                                            });
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[1].x + x,
-                                                y: face_vertices[1].y + y,
-                                                z: face_vertices[1].z + z,
-                                                u: uv.2,
-                                                v: uv.1,
-                                                render_data: block.render_data,
-                                            });
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[2].x + x,
-                                                y: face_vertices[2].y + y,
-                                                z: face_vertices[2].z + z,
-                                                u: uv.2,
-                                                v: uv.3,
-                                                render_data: block.render_data,
-                                            });
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[2].x + x,
-                                                y: face_vertices[2].y + y,
-                                                z: face_vertices[2].z + z,
-                                                u: uv.2,
-                                                v: uv.3,
-                                                render_data: block.render_data,
-                                            });
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[3].x + x,
-                                                y: face_vertices[3].y + y,
-                                                z: face_vertices[3].z + z,
-                                                u: uv.0,
-                                                v: uv.3,
-                                                render_data: block.render_data,
-                                            });
-                                            vertices.push(glwrappers::Vertex {
-                                                x: face_vertices[0].x + x,
-                                                y: face_vertices[0].y + y,
-                                                z: face_vertices[0].z + z,
-                                                u: uv.0,
-                                                v: uv.1,
-                                                render_data: block.render_data,
-                                            });
+                                            if !neighbor_side_full {
+                                                let face_vertices = face.get_vertices();
+                                                let uv = texture.get_coords();
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[0].x + x,
+                                                    y: face_vertices[0].y + y,
+                                                    z: face_vertices[0].z + z,
+                                                    u: uv.0,
+                                                    v: uv.1,
+                                                    render_data: block.render_data,
+                                                });
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[1].x + x,
+                                                    y: face_vertices[1].y + y,
+                                                    z: face_vertices[1].z + z,
+                                                    u: uv.2,
+                                                    v: uv.1,
+                                                    render_data: block.render_data,
+                                                });
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[2].x + x,
+                                                    y: face_vertices[2].y + y,
+                                                    z: face_vertices[2].z + z,
+                                                    u: uv.2,
+                                                    v: uv.3,
+                                                    render_data: block.render_data,
+                                                });
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[2].x + x,
+                                                    y: face_vertices[2].y + y,
+                                                    z: face_vertices[2].z + z,
+                                                    u: uv.2,
+                                                    v: uv.3,
+                                                    render_data: block.render_data,
+                                                });
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[3].x + x,
+                                                    y: face_vertices[3].y + y,
+                                                    z: face_vertices[3].z + z,
+                                                    u: uv.0,
+                                                    v: uv.3,
+                                                    render_data: block.render_data,
+                                                });
+                                                vertices.push(glwrappers::Vertex {
+                                                    x: face_vertices[0].x + x,
+                                                    y: face_vertices[0].y + y,
+                                                    z: face_vertices[0].z + z,
+                                                    u: uv.0,
+                                                    v: uv.1,
+                                                    render_data: block.render_data,
+                                                });
+                                            }
                                         }
                                     }
-                                }
-                                BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
-                                    model.add_to_chunk_mesh(
-                                        &mut vertices,
-                                        block.render_data,
-                                        BlockPosition {
-                                            x: bx,
-                                            y: by,
-                                            z: bz,
-                                        },
-                                    );
+                                    BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                                        model.add_to_chunk_mesh(
+                                            &mut vertices,
+                                            block.render_data,
+                                            BlockPosition {
+                                                x: bx,
+                                                y: by,
+                                                z: bz,
+                                            },
+                                        );
+                                    }
                                 }
                             }
                         }
                     }
                 }
+                chunk_builder_output_tx
+                    .send((pos, blocks, vertices))
+                    .unwrap();
             }
-            chunk_builder_output_tx
-                .send((pos, blocks, vertices))
-                .unwrap();
         })
         .unwrap();
     'main_loop: loop {
@@ -358,91 +460,6 @@ fn main() {
                             NetworkMessageS2C::DeleteEntity(id) => {
                                 entities.remove(&id);
                             }
-                            NetworkMessageS2C::InitializeContent(blocks, entities, items) => {
-                                let mut guard = block_registry.lock().unwrap();
-                                let block_registry_blocks = &mut guard.blocks;
-                                for block in &blocks {
-                                    match block.json["type"].as_str().unwrap() {
-                                        "cube" => {
-                                            block_registry_blocks.push(game::Block {
-                                                render_data: 0,
-                                                render_type: game::BlockRenderType::Cube(
-                                                    texture_atlas
-                                                        .get(block.json["north"].as_str().unwrap())
-                                                        .clone(),
-                                                    texture_atlas
-                                                        .get(block.json["south"].as_str().unwrap())
-                                                        .clone(),
-                                                    texture_atlas
-                                                        .get(block.json["right"].as_str().unwrap())
-                                                        .clone(),
-                                                    texture_atlas
-                                                        .get(block.json["left"].as_str().unwrap())
-                                                        .clone(),
-                                                    texture_atlas
-                                                        .get(block.json["up"].as_str().unwrap())
-                                                        .clone(),
-                                                    texture_atlas
-                                                        .get(block.json["down"].as_str().unwrap())
-                                                        .clone(),
-                                                ),
-                                            });
-                                        }
-                                        "static" => {
-                                            let texture = texture_atlas
-                                                .get(block.json["texture"].as_str().unwrap())
-                                                .clone();
-                                            block_registry_blocks.push(Block {
-                                                render_data: 0,
-                                                render_type: BlockRenderType::StaticModel(
-                                                    StaticBlockModel::new(
-                                                        &json::parse(
-                                                            std::fs::read_to_string(
-                                                                block.json["model"]
-                                                                    .as_str()
-                                                                    .unwrap()
-                                                                    .to_string()
-                                                                    + ".bbmodel",
-                                                            )
-                                                            .unwrap()
-                                                            .as_str(),
-                                                        )
-                                                        .unwrap(),
-                                                        &texture,
-                                                    ),
-                                                    block.json["north"].as_bool().unwrap(),
-                                                    block.json["south"].as_bool().unwrap(),
-                                                    block.json["right"].as_bool().unwrap(),
-                                                    block.json["left"].as_bool().unwrap(),
-                                                    block.json["up"].as_bool().unwrap(),
-                                                    block.json["down"].as_bool().unwrap(),
-                                                ),
-                                            })
-                                        }
-                                        _ => unreachable!(),
-                                    }
-                                }
-                                for item in items {
-                                    item_registry.borrow_mut().push(item);
-                                }
-                                for entity_render_data in entities {
-                                    let model = match std::fs::read_to_string(Path::new(
-                                        entity_render_data.model.as_str(),
-                                    )) {
-                                        Ok(str) => EntityModel::new(
-                                            json::parse(str.as_str()).unwrap(),
-                                            texture_atlas.get(&entity_render_data.texture),
-                                            entity_render_data,
-                                        ),
-                                        Err(_) => EntityModel::new(
-                                            json::parse(include_str!("missing.bbmodel")).unwrap(),
-                                            &texture_atlas.missing_texture,
-                                            entity_render_data,
-                                        ),
-                                    };
-                                    entity_registry.push(model);
-                                }
-                            }
                             NetworkMessageS2C::GuiData(data) => {
                                 gui.on_json_data(data);
                             }
@@ -471,7 +488,7 @@ fn main() {
         let raycast_result = raycast(
             &world,
             &camera,
-            &block_registry.lock().unwrap(),
+            &block_registry,
             &entities,
             &entity_registry,
         );
@@ -731,24 +748,21 @@ fn main() {
             model_shader.set_uniform_matrix(projection_view_loc, projection);
             let mut items_to_render_in_world = Vec::new();
             for entity in &entities {
-                entity_registry
-                    .get(entity.1.entity_type as usize)
-                    .unwrap()
-                    .render(
-                        entity.1.position,
-                        entity.1.rotation.to_radians(),
-                        &model_shader,
-                    );
+                entity_registry.get(&entity.1.entity_type).unwrap().render(
+                    entity.1.position,
+                    entity.1.rotation.to_radians(),
+                    &model_shader,
+                );
                 for item in &entity.1.items {
                     items_to_render_in_world.push((entity.1.position.clone(), *item));
                 }
             }
             world_item_renderer.render(
                 items_to_render_in_world,
-                &item_registry.borrow(),
+                &item_registry,
                 &projection,
                 &texture_atlas,
-                &block_registry.lock().unwrap(),
+                &block_registry,
             );
             outline_shader.use_program();
             let projection_view_loc = outline_shader
@@ -768,7 +782,7 @@ fn main() {
                 outline_renderer.render(
                     raycast_result,
                     &outline_shader,
-                    &block_registry.lock().unwrap(),
+                    &block_registry,
                     &entities,
                     &entity_registry,
                 );
@@ -784,7 +798,7 @@ fn main() {
         }
     }
 }
-fn pack_textures(textures: Vec<(&str, &std::path::Path)>) -> (TextureAtlas, RgbaImage) {
+fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, RgbaImage) {
     let mut texture_map = std::collections::HashMap::new();
     let mut packer =
         texture_packer::TexturePacker::new_skyline(texture_packer::TexturePackerConfig {
@@ -798,13 +812,13 @@ fn pack_textures(textures: Vec<(&str, &std::path::Path)>) -> (TextureAtlas, Rgba
             texture_extrusion: 0,
         });
     for (name, path) in textures {
-        if let Ok(texture) = ImageImporter::import_from_file(path) {
+        if let Ok(texture) = ImageImporter::import_from_file(path.as_path()) {
             packer.pack_own(name, texture).unwrap();
         }
     }
     packer
         .pack_own(
-            "missing",
+            "missing".to_string(),
             ImageImporter::import_from_memory(include_bytes!("missing.png"))
                 .expect("missing texture corrupted"),
         )
@@ -900,7 +914,7 @@ impl WorldItemRenderer {
     pub fn render(
         &mut self,
         items: Vec<(Position, u32)>,
-        item_registry: &Vec<ItemRenderData>,
+        item_registry: &HashMap<u32, ItemRenderData>,
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
         block_registry: &BlockRegistry,
@@ -908,7 +922,7 @@ impl WorldItemRenderer {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
         for item in &items {
-            let item_texture = &item_registry.get(item.1 as usize).unwrap().model;
+            let item_texture = &item_registry.get(&item.1).unwrap().model;
             let position = &item.0;
             match item_texture {
                 ItemModel::Texture(texture) => {
@@ -1078,7 +1092,7 @@ pub fn raycast(
     camera: &game::ClientPlayer,
     block_registry: &BlockRegistry,
     entities: &HashMap<u32, game::Entity>,
-    entity_registry: &Vec<EntityModel>,
+    entity_registry: &HashMap<u32, EntityModel>,
 ) -> Option<HitResult> {
     //TODO: better algorithm
     let mut ray_pos = camera.get_eye().clone();
@@ -1093,7 +1107,7 @@ pub fn raycast(
         for entry in entities {
             let entity = entry.1;
             let entity_render_data = &entity_registry
-                .get(entity.entity_type as usize)
+                .get(&entity.entity_type)
                 .unwrap()
                 .render_data;
             if ray_pos.x >= entity.position.x
@@ -1332,7 +1346,7 @@ impl BlockOutline {
         shader: &glwrappers::Shader,
         block_registry: &BlockRegistry,
         entities: &HashMap<u32, game::Entity>,
-        entity_registry: &Vec<EntityModel>,
+        entity_registry: &HashMap<u32, EntityModel>,
     ) {
         self.vao.bind();
         self.vbo.bind();
@@ -1374,7 +1388,7 @@ impl BlockOutline {
                 if (!self.last_entity) || self.last_id != *id {
                     self.upload_entity(
                         &entity_registry
-                            .get(entities.get(&id).unwrap().entity_type as usize)
+                            .get(&entities.get(id).unwrap().entity_type)
                             .unwrap()
                             .render_data,
                         1.,
