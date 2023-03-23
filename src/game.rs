@@ -603,7 +603,7 @@ pub struct Entity {
     pub entity_type: u32,
     pub position: Position,
     pub rotation: f32,
-    pub items: Vec<u32>,
+    pub items: HashMap<u32, u32>,
 }
 #[derive(Clone)]
 pub struct BlockModelCube {

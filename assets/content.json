@@ -1,18 +1,6 @@
 {
   "blocks": [
     {
-      "id": 5,
-      "model": {
-        "type": "cube",
-        "north": "grass_side",
-        "south": "grass_side",
-        "left": "grass_side",
-        "right": "grass_side",
-        "up": "grass_side",
-        "down": "grass_side"
-      }
-    },
-    {
       "id": 1,
       "model": {
         "type": "cube",
@@ -37,6 +25,18 @@
       }
     },
     {
+      "id": 3,
+      "model": {
+        "type": "cube",
+        "north": "cobble",
+        "south": "cobble",
+        "left": "cobble",
+        "right": "cobble",
+        "up": "cobble",
+        "down": "cobble"
+      }
+    },
+    {
       "id": 4,
       "model": {
         "type": "static",
@@ -51,15 +51,63 @@
       }
     },
     {
-      "id": 3,
+      "id": 5,
       "model": {
         "type": "cube",
-        "north": "cobble",
-        "south": "cobble",
-        "left": "cobble",
-        "right": "cobble",
-        "up": "cobble",
-        "down": "cobble"
+        "north": "grass_side",
+        "south": "grass_side",
+        "left": "grass_side",
+        "right": "grass_side",
+        "up": "grass_side",
+        "down": "grass_side"
+      }
+    },
+    {
+      "id": 6,
+      "model": {
+        "type": "cube",
+        "north": "chest_front",
+        "south": "chest_side",
+        "left": "chest_side",
+        "right": "chest_side",
+        "up": "chest_base",
+        "down": "chest_base"
+      }
+    },
+    {
+      "id": 7,
+      "model": {
+        "type": "cube",
+        "north": "chest_side",
+        "south": "chest_front",
+        "left": "chest_side",
+        "right": "chest_side",
+        "up": "chest_base",
+        "down": "chest_base"
+      }
+    },
+    {
+      "id": 8,
+      "model": {
+        "type": "cube",
+        "north": "chest_side",
+        "south": "chest_side",
+        "left": "chest_front",
+        "right": "chest_side",
+        "up": "chest_base",
+        "down": "chest_base"
+      }
+    },
+    {
+      "id": 9,
+      "model": {
+        "type": "cube",
+        "north": "chest_side",
+        "south": "chest_side",
+        "left": "chest_side",
+        "right": "chest_front",
+        "up": "chest_base",
+        "down": "chest_base"
       }
     }
   ],
@@ -77,13 +125,19 @@
       "modelValue": 1
     },
     {
+      "id": 4,
+      "name": "chest",
+      "modelType": "texture",
+      "modelValue": "chest_front"
+    },
+    {
       "id": 2,
       "name": "dirt block",
       "modelType": "texture",
       "modelValue": "dirt"
     },
     {
-      "id": 4,
+      "id": 5,
       "name": "stand",
       "modelType": "texture",
       "modelValue": "grass_side"
@@ -101,7 +155,7 @@
       "model": "player.bbmodel",
       "texture": "player",
       "hitboxW": 0.6,
-      "hitboxH": 2.7,
+      "hitboxH": 1.7,
       "hitboxD": 0.6
     },
     {

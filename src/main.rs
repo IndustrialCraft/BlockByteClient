@@ -445,7 +445,7 @@ fn main() {
                                         entity_type,
                                         rotation,
                                         position: Position { x, y, z },
-                                        items: Vec::new(),
+                                        items: HashMap::new(),
                                     },
                                 );
                             }
@@ -466,8 +466,15 @@ fn main() {
                             NetworkMessageS2C::BlockBreakTimeResponse(id, time) => {
                                 block_breaking_manager.on_block_break_time_response(id, time);
                             }
-                            NetworkMessageS2C::EntityAddItem(entity_id, item_id) => {
-                                entities.get_mut(&entity_id).unwrap().items.push(item_id);
+                            NetworkMessageS2C::EntityAddItem(entity_id, item_index, item_id) => {
+                                entities
+                                    .get_mut(&entity_id)
+                                    .unwrap()
+                                    .items
+                                    .insert(item_index, item_id);
+                            }
+                            NetworkMessageS2C::BlockAddItem(x, y, z, item_index, item_id) => {
+                                todo!();
                             }
                         }
                     }
@@ -754,7 +761,7 @@ fn main() {
                     &model_shader,
                 );
                 for item in &entity.1.items {
-                    items_to_render_in_world.push((entity.1.position.clone(), *item));
+                    items_to_render_in_world.push((entity.1.position.clone(), *item.1));
                 }
             }
             world_item_renderer.render(

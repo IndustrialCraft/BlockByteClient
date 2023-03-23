@@ -34,7 +34,8 @@ pub enum NetworkMessageS2C {
     DeleteEntity(u32) = 5,
     GuiData(json::JsonValue) = 6,
     BlockBreakTimeResponse(u32, f32) = 7,
-    EntityAddItem(u32, u32) = 8,
+    EntityAddItem(u32, u32, u32) = 8,
+    BlockAddItem(i32, i32, i32, u32, u32) = 9,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -104,6 +105,14 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             8 => Some(NetworkMessageS2C::EntityAddItem(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
+            9 => Some(Self::BlockAddItem(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),
