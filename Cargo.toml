@@ -8,7 +8,7 @@ edition = "2021"
 [dependencies]
 bytemuck = "1"
 ogl33 = { version = "0.2.0", features = ["debug_error_checks"]}
-sdl2 = "0.35"
+sdl2 = {version = "0.35", features = ["image"]}
 imagine = "0.0.5"
 ultraviolet = "0.9.0"
 enum-iterator = "1.3.0"
@@ -22,4 +22,4 @@ endio = "0.1.0"
 json = "0.12.4"
 uuid = {version = "1.3.0", features = ["v4","fast-rng","macro-diagnostics"]}
 libflate = "1.3.0"
-
+discord-rich-presence = "0.2.3"

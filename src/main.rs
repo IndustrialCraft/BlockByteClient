@@ -13,7 +13,14 @@ use std::path::Path;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::time::Instant;
+use std::time::SystemTime;
+use std::time::UNIX_EPOCH;
 
+use discord_rich_presence::activity::Activity;
+use discord_rich_presence::activity::Assets;
+use discord_rich_presence::activity::Timestamps;
+use discord_rich_presence::DiscordIpc;
+use discord_rich_presence::DiscordIpcClient;
 use game::AtlassedTexture;
 use game::Block;
 use game::BlockRegistry;
@@ -27,8 +34,10 @@ use image::EncodableLayout;
 use image::RgbaImage;
 use ogl33::c_char;
 use ogl33::c_void;
+use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
+use sdl2::surface::Surface;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
 use tungstenite::WebSocket;
@@ -49,7 +58,7 @@ fn main() {
         video_subsystem
             .window("Game", 900, 700)
             .opengl()
-            //.fullscreen_desktop()
+            .fullscreen_desktop()
             .resizable()
             .build()
             .unwrap(),
@@ -75,8 +84,14 @@ fn main() {
         ogl33::glClearColor(0.2, 0.3, 0.3, 1.0);
         ogl33::glViewport(0, 0, win_width as i32, win_height as i32)
     }
-
     let mut assets = std::path::Path::new(args.next().unwrap().as_str()).to_path_buf();
+    assets.push("icon.png");
+    {
+        window
+            .borrow_mut()
+            .set_icon(Surface::from_file(assets.as_os_str()).unwrap());
+    }
+    assets.pop();
     let (texture_atlas, packed_texture) = {
         let mut textures_to_pack = Vec::new();
         for asset in std::fs::read_dir(&assets).unwrap() {
@@ -136,7 +151,12 @@ fn main() {
                                                 model["model"].as_str().unwrap().to_string()
                                                     + ".bbmodel",
                                             );
-                                            let json = std::fs::read_to_string(&assets).unwrap();
+                                            let json = match std::fs::read_to_string(&assets) {
+                                                Ok(string) => string,
+                                                Err(_) => {
+                                                    include_str!("missing.bbmodel").to_string()
+                                                }
+                                            };
                                             assets.pop();
                                             json
                                         }
@@ -201,9 +221,8 @@ fn main() {
         }
         (block_registry, entity_registry, item_registry)
     };
-
     let addr = args.next().unwrap();
-    let tcp_stream = std::net::TcpStream::connect(addr).unwrap();
+    let tcp_stream = std::net::TcpStream::connect(&addr).unwrap();
     let (mut socket, _response) = tungstenite::client::client_with_config(
         url::Url::parse("ws://aaa123").unwrap(),
         tcp_stream,
@@ -211,6 +230,22 @@ fn main() {
     )
     .unwrap();
     socket.get_mut().set_nonblocking(true).unwrap();
+    let mut drpc = {
+        let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
+        match drpc.connect() {
+            Ok(_) => Some(drpc),
+            Err(_) => None,
+        }
+    };
+    if let Some(drpc) = &mut drpc {
+        println!("discord rpc started!");
+        drpc.set_activity(
+        Activity::new()
+            .state(format!("Connected to {}", addr).as_str())
+            .assets(Assets::new().large_image("https://cdn.discordapp.com/app-icons/1088876238447321128/8e9d838b6ccc9010f6e762023127f1c8.png?size=128")).timestamps(Timestamps::new().start(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64)),
+    )
+    .expect("Failed to set activity");
+    }
 
     let chunk_shader = glwrappers::Shader::new(
         include_str!("shaders/chunk.vert").to_string(),
@@ -803,6 +838,9 @@ fn main() {
             last_frame_time =
                 (1000000f64 / (render_start_time.elapsed().as_micros() as f64)) as u32 as f32;
         }
+    }
+    if let Some(drpc) = &mut drpc {
+        drpc.close().unwrap();
     }
 }
 fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, RgbaImage) {
