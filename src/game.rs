@@ -547,6 +547,7 @@ impl AtlassedTexture {
 
 pub struct World<'a> {
     chunks: std::collections::HashMap<ChunkPosition, Chunk<'a>>,
+    pub blocks_with_items: HashMap<BlockPosition, HashMap<u32, (f32, f32, f32, u32)>>,
     block_registry: &'a BlockRegistry,
 }
 impl<'a> World<'a> {
@@ -554,6 +555,7 @@ impl<'a> World<'a> {
         World {
             chunks: std::collections::HashMap::new(),
             block_registry,
+            blocks_with_items: HashMap::new(),
         }
     }
     pub fn load_chunk(&mut self, position: ChunkPosition) -> &mut Chunk<'a> {
@@ -565,6 +567,8 @@ impl<'a> World<'a> {
     }
     pub fn unload_chunk(&mut self, position: ChunkPosition) {
         self.chunks.remove(&position);
+        self.blocks_with_items
+            .drain_filter(|pos, _| pos.to_chunk_pos() == position);
     }
     pub fn get_chunk(&self, position: ChunkPosition) -> Option<&Chunk> {
         self.chunks.get(&position)
@@ -573,6 +577,7 @@ impl<'a> World<'a> {
         self.chunks.get_mut(&position)
     }
     pub fn set_block(&mut self, position: BlockPosition, id: u32) -> Result<(), ()> {
+        self.blocks_with_items.remove(&position);
         match self.get_mut_chunk(position.to_chunk_pos()) {
             Some(chunk) => {
                 let offset = position.chunk_offset();

@@ -507,8 +507,51 @@ fn main() {
                                     .items
                                     .insert(item_index, item_id);
                             }
-                            NetworkMessageS2C::BlockAddItem(x, y, z, item_index, item_id) => {
-                                todo!();
+                            NetworkMessageS2C::BlockAddItem(
+                                x,
+                                y,
+                                z,
+                                x_offset,
+                                y_offset,
+                                z_offset,
+                                item_index,
+                                item_id,
+                            ) => {
+                                let block_pos = BlockPosition { x, y, z };
+                                if !world.blocks_with_items.contains_key(&block_pos) {
+                                    world.blocks_with_items.insert(block_pos, HashMap::new());
+                                }
+                                world
+                                    .blocks_with_items
+                                    .get_mut(&block_pos)
+                                    .unwrap()
+                                    .insert(item_index, (x_offset, y_offset, z_offset, item_id));
+                            }
+                            NetworkMessageS2C::BlockRemoveItem(x, y, z, item_index) => {
+                                if let Some(block_item_storage) =
+                                    world.blocks_with_items.get_mut(&BlockPosition { x, y, z })
+                                {
+                                    block_item_storage.remove(&item_index);
+                                }
+                            }
+                            NetworkMessageS2C::BlockMoveItem(
+                                x,
+                                y,
+                                z,
+                                x_offset,
+                                y_offset,
+                                z_offset,
+                                item_index,
+                            ) => {
+                                if let Some(block_item_storage) =
+                                    world.blocks_with_items.get_mut(&BlockPosition { x, y, z })
+                                {
+                                    if let Some(item) = block_item_storage.get_mut(&item_index) {
+                                        item.0 = x_offset;
+                                        item.1 = y_offset;
+                                        item.2 = z_offset;
+                                    }
+                                }
                             }
                         }
                     }
@@ -796,6 +839,18 @@ fn main() {
                 );
                 for item in &entity.1.items {
                     items_to_render_in_world.push((entity.1.position.clone(), *item.1));
+                }
+            }
+            for block in &world.blocks_with_items {
+                for item in block.1 {
+                    items_to_render_in_world.push((
+                        Position {
+                            x: (block.0.x as f32) + item.1 .0,
+                            y: (block.0.y as f32) + item.1 .1,
+                            z: (block.0.z as f32) + item.1 .2,
+                        },
+                        item.1 .3,
+                    ));
                 }
             }
             world_item_renderer.render(

@@ -35,7 +35,9 @@ pub enum NetworkMessageS2C {
     GuiData(json::JsonValue) = 6,
     BlockBreakTimeResponse(u32, f32) = 7,
     EntityAddItem(u32, u32, u32) = 8,
-    BlockAddItem(i32, i32, i32, u32, u32) = 9,
+    BlockAddItem(i32, i32, i32, f32, f32, f32, u32, u32) = 9,
+    BlockRemoveItem(i32, i32, i32, u32) = 10,
+    BlockMoveItem(i32, i32, i32, f32, f32, f32, u32) = 11,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -110,6 +112,24 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             9 => Some(Self::BlockAddItem(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
+            10 => Some(Self::BlockRemoveItem(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
+            11 => Some(Self::BlockMoveItem(
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
@@ -411,7 +431,7 @@ impl Position {
         }
     }
 }
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct BlockPosition {
     pub x: i32,
     pub y: i32,
