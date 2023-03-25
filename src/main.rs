@@ -153,9 +153,8 @@ fn main() {
                                             );
                                             let json = match std::fs::read_to_string(&assets) {
                                                 Ok(string) => string,
-                                                Err(_) => {
-                                                    include_str!("missing.bbmodel").to_string()
-                                                }
+                                                Err(_) => include_str!("missing_block.bbmodel")
+                                                    .to_string(),
                                             };
                                             assets.pop();
                                             json
