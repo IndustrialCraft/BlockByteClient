@@ -38,6 +38,7 @@ use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::surface::Surface;
+use sdl2::sys::KeyCode;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
 use tungstenite::WebSocket;
@@ -595,11 +596,14 @@ fn main() {
                     y,
                     direction: _,
                 } => {
-                    socket
-                        .write_message(tungstenite::Message::Binary(
-                            util::NetworkMessageC2S::MouseScroll(x, y).to_data(),
-                        ))
-                        .unwrap();
+                    if !gui.on_mouse_scroll(&mut socket, x, y, keys_held.contains(&Keycode::LShift))
+                    {
+                        socket
+                            .write_message(tungstenite::Message::Binary(
+                                util::NetworkMessageC2S::MouseScroll(x, y).to_data(),
+                            ))
+                            .unwrap();
+                    }
                 }
                 Event::MouseMotion {
                     timestamp: _,
@@ -632,7 +636,7 @@ fn main() {
                         break 'main_loop;
                     }
                     if mouse_btn == MouseButton::Left {
-                        if !gui.on_left_click(&mut socket) {
+                        if !gui.on_left_click(&mut socket, keys_held.contains(&Keycode::LShift)) {
                             /*if let Some((position, _id, _face)) = raycast_result {
                                 socket
                                     .write_message(tungstenite::Message::Binary(

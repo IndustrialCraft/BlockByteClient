@@ -146,11 +146,12 @@ pub enum NetworkMessageC2S {
     PlayerPosition(f32, f32, f32, bool, f32),
     MouseScroll(i32, i32),
     Keyboard(i32, bool, bool),
-    GuiClick(String, MouseButton),
+    GuiClick(String, MouseButton, bool),
     GuiClose,
     RequestBlockBreakTime(u32, BlockPosition),
     LeftClickEntity(u32),
     RightClickEntity(u32),
+    GuiScroll(String, i32, i32, bool),
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -195,10 +196,11 @@ impl NetworkMessageC2S {
                 data.write_be(*down).unwrap();
                 data.write_be(*repeat).unwrap();
             }
-            Self::GuiClick(id, button) => {
+            Self::GuiClick(id, button, shift) => {
                 data.write_be(5u8).unwrap();
                 write_string(&mut data, id);
                 data.write_be((*button) as u8).unwrap();
+                data.write_be(*shift).unwrap();
             }
             Self::GuiClose => {
                 data.write_be(6u8).unwrap();
@@ -217,6 +219,13 @@ impl NetworkMessageC2S {
             Self::RightClickEntity(id) => {
                 data.write_be(9u8).unwrap();
                 data.write_be(*id).unwrap();
+            }
+            Self::GuiScroll(id, x, y, shifting) => {
+                data.write_be(10u8).unwrap();
+                write_string(&mut data, id);
+                data.write_be(*x).unwrap();
+                data.write_be(*y).unwrap();
+                data.write_be(*shifting).unwrap();
             }
         };
         data

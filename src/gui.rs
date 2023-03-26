@@ -783,7 +783,7 @@ impl<'a> GUI<'a> {
         }
         !self.mouse_locked
     }
-    pub fn on_left_click(&mut self, socket: &mut WebSocket<TcpStream>) -> bool {
+    pub fn on_left_click(&mut self, socket: &mut WebSocket<TcpStream>, shifting: bool) -> bool {
         if !self.mouse_locked {
             if let Some(cursor) = &self.cursor {
                 let mut id = None;
@@ -799,8 +799,12 @@ impl<'a> GUI<'a> {
                 if let Some(id) = id {
                     socket
                         .write_message(tungstenite::Message::Binary(
-                            NetworkMessageC2S::GuiClick(id, crate::util::MouseButton::LEFT)
-                                .to_data(),
+                            NetworkMessageC2S::GuiClick(
+                                id,
+                                crate::util::MouseButton::LEFT,
+                                shifting,
+                            )
+                            .to_data(),
                         ))
                         .unwrap();
                 }
@@ -809,6 +813,36 @@ impl<'a> GUI<'a> {
         !self.mouse_locked
     }
     pub fn on_right_click(&mut self) -> bool {
+        !self.mouse_locked
+    }
+    pub fn on_mouse_scroll(
+        &mut self,
+        socket: &mut WebSocket<TcpStream>,
+        x: i32,
+        y: i32,
+        shifting: bool,
+    ) -> bool {
+        if !self.mouse_locked {
+            if let Some(cursor) = &self.cursor {
+                let mut id = None;
+                for element in &self.elements {
+                    if element.1.x <= cursor.1
+                        && element.1.x + element.1.component.get_width() >= cursor.1
+                        && element.1.y <= cursor.2
+                        && element.1.y + element.1.component.get_height() >= cursor.2
+                    {
+                        id = Some(element.0.clone());
+                    }
+                }
+                if let Some(id) = id {
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::GuiScroll(id, x, y, shifting).to_data(),
+                        ))
+                        .unwrap();
+                }
+            }
+        }
         !self.mouse_locked
     }
     pub fn render(&mut self, shader: &glwrappers::Shader) {
