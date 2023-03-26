@@ -288,6 +288,7 @@ fn main() {
         &window,
         &block_registry,
     );
+    let win_id = { window.borrow().id() };
     let mut block_breaking_manager = BlockBreakingManager::new(vec![
         texture_atlas.get("breaking1").clone(),
         texture_atlas.get("breaking2").clone(),
@@ -590,24 +591,30 @@ fn main() {
                 Event::Quit { timestamp: _ } => break 'main_loop,
                 Event::MouseWheel {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     which: _,
                     x,
                     y,
                     direction: _,
                 } => {
-                    if !gui.on_mouse_scroll(&mut socket, x, y, keys_held.contains(&Keycode::LShift))
-                    {
-                        socket
-                            .write_message(tungstenite::Message::Binary(
-                                util::NetworkMessageC2S::MouseScroll(x, y).to_data(),
-                            ))
-                            .unwrap();
+                    if window_id == win_id {
+                        if !gui.on_mouse_scroll(
+                            &mut socket,
+                            x,
+                            y,
+                            keys_held.contains(&Keycode::LShift),
+                        ) {
+                            socket
+                                .write_message(tungstenite::Message::Binary(
+                                    util::NetworkMessageC2S::MouseScroll(x, y).to_data(),
+                                ))
+                                .unwrap();
+                        }
                     }
                 }
                 Event::MouseMotion {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     which: _,
                     mousestate: _,
                     x,
@@ -615,77 +622,84 @@ fn main() {
                     xrel,
                     yrel,
                 } => {
-                    if !gui.on_mouse_move(x, y) {
-                        let sensitivity = 0.5f32;
-                        camera.update_orientation(
-                            (-yrel as f32) * sensitivity,
-                            (-xrel as f32) * sensitivity,
-                        );
+                    if window_id == win_id {
+                        if !gui.on_mouse_move(x, y) {
+                            let sensitivity = 0.5f32;
+                            camera.update_orientation(
+                                (-yrel as f32) * sensitivity,
+                                (-xrel as f32) * sensitivity,
+                            );
+                        }
                     }
                 }
                 Event::MouseButtonDown {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     which: _,
                     mouse_btn,
                     clicks: _,
                     x: _,
                     y: _,
                 } => {
-                    if mouse_btn == MouseButton::Middle {
-                        break 'main_loop;
-                    }
-                    if mouse_btn == MouseButton::Left {
-                        if !gui.on_left_click(&mut socket, keys_held.contains(&Keycode::LShift)) {
-                            /*if let Some((position, _id, _face)) = raycast_result {
-                                socket
-                                    .write_message(tungstenite::Message::Binary(
-                                        NetworkMessageC2S::LeftClickBlock(
-                                            position.x, position.y, position.z,
-                                        )
-                                        .to_data(),
-                                    ))
-                                    .unwrap();
-                            }*/
-                            if let Some(raycast_result) = &raycast_result {
-                                match raycast_result {
-                                    HitResult::Block(_, _, _) => {}
-                                    HitResult::Entity(id) => {
-                                        socket
-                                            .write_message(tungstenite::Message::Binary(
-                                                NetworkMessageC2S::LeftClickEntity(*id).to_data(),
-                                            ))
-                                            .unwrap();
+                    if window_id == win_id {
+                        if mouse_btn == MouseButton::Middle {
+                            break 'main_loop;
+                        }
+                        if mouse_btn == MouseButton::Left {
+                            if !gui.on_left_click(&mut socket, keys_held.contains(&Keycode::LShift))
+                            {
+                                /*if let Some((position, _id, _face)) = raycast_result {
+                                    socket
+                                        .write_message(tungstenite::Message::Binary(
+                                            NetworkMessageC2S::LeftClickBlock(
+                                                position.x, position.y, position.z,
+                                            )
+                                            .to_data(),
+                                        ))
+                                        .unwrap();
+                                }*/
+                                if let Some(raycast_result) = &raycast_result {
+                                    match raycast_result {
+                                        HitResult::Block(_, _, _) => {}
+                                        HitResult::Entity(id) => {
+                                            socket
+                                                .write_message(tungstenite::Message::Binary(
+                                                    NetworkMessageC2S::LeftClickEntity(*id)
+                                                        .to_data(),
+                                                ))
+                                                .unwrap();
+                                        }
                                     }
                                 }
+                                block_breaking_manager.set_left_click_held(true);
                             }
-                            block_breaking_manager.set_left_click_held(true);
                         }
-                    }
-                    if mouse_btn == MouseButton::Right {
-                        if let Some(raycast_result) = &raycast_result {
-                            if !gui.on_right_click() {
-                                match raycast_result {
-                                    HitResult::Block(position, _, face) => {
-                                        socket
-                                            .write_message(tungstenite::Message::Binary(
-                                                NetworkMessageC2S::RightClickBlock(
-                                                    position.x,
-                                                    position.y,
-                                                    position.z,
-                                                    *face,
-                                                    camera.is_shifting(),
-                                                )
-                                                .to_data(),
-                                            ))
-                                            .unwrap();
-                                    }
-                                    HitResult::Entity(id) => {
-                                        socket
-                                            .write_message(tungstenite::Message::Binary(
-                                                NetworkMessageC2S::RightClickEntity(*id).to_data(),
-                                            ))
-                                            .unwrap();
+                        if mouse_btn == MouseButton::Right {
+                            if let Some(raycast_result) = &raycast_result {
+                                if !gui.on_right_click() {
+                                    match raycast_result {
+                                        HitResult::Block(position, _, face) => {
+                                            socket
+                                                .write_message(tungstenite::Message::Binary(
+                                                    NetworkMessageC2S::RightClickBlock(
+                                                        position.x,
+                                                        position.y,
+                                                        position.z,
+                                                        *face,
+                                                        camera.is_shifting(),
+                                                    )
+                                                    .to_data(),
+                                                ))
+                                                .unwrap();
+                                        }
+                                        HitResult::Entity(id) => {
+                                            socket
+                                                .write_message(tungstenite::Message::Binary(
+                                                    NetworkMessageC2S::RightClickEntity(*id)
+                                                        .to_data(),
+                                                ))
+                                                .unwrap();
+                                        }
                                     }
                                 }
                             }
@@ -694,71 +708,81 @@ fn main() {
                 }
                 Event::MouseButtonUp {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     which: _,
                     mouse_btn,
                     clicks: _,
                     x: _,
                     y: _,
                 } => {
-                    if mouse_btn == MouseButton::Left {
-                        block_breaking_manager.set_left_click_held(false);
+                    if window_id == win_id {
+                        if mouse_btn == MouseButton::Left {
+                            block_breaking_manager.set_left_click_held(false);
+                        }
                     }
                 }
                 Event::KeyDown {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     keycode,
                     scancode: _,
                     keymod: _,
                     repeat,
                 } => {
-                    if keycode.unwrap() == Keycode::Escape {
+                    if window_id == win_id {
+                        if keycode.unwrap() == Keycode::Escape {
+                            socket
+                                .write_message(tungstenite::Message::Binary(
+                                    NetworkMessageC2S::GuiClose.to_data(),
+                                ))
+                                .unwrap();
+                        }
+                        keys_held.insert(keycode.unwrap());
                         socket
                             .write_message(tungstenite::Message::Binary(
-                                NetworkMessageC2S::GuiClose.to_data(),
+                                NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, true, repeat)
+                                    .to_data(),
                             ))
                             .unwrap();
                     }
-                    keys_held.insert(keycode.unwrap());
-                    socket
-                        .write_message(tungstenite::Message::Binary(
-                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, true, repeat)
-                                .to_data(),
-                        ))
-                        .unwrap();
                 }
                 Event::KeyUp {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     keycode,
                     scancode: _,
                     keymod: _,
                     repeat,
                 } => {
-                    keys_held.remove(&keycode.unwrap());
-                    socket
-                        .write_message(tungstenite::Message::Binary(
-                            NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat)
-                                .to_data(),
-                        ))
-                        .unwrap();
+                    if window_id == win_id {
+                        keys_held.remove(&keycode.unwrap());
+                        socket
+                            .write_message(tungstenite::Message::Binary(
+                                NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat)
+                                    .to_data(),
+                            ))
+                            .unwrap();
+                    }
                 }
                 Event::Window {
                     timestamp: _,
-                    window_id: _,
+                    window_id,
                     win_event,
-                } => match win_event {
-                    WindowEvent::Resized(width, height) => {
-                        win_width = width as u32;
-                        win_height = height as u32;
-                        gui.size = (win_width, win_height);
-                        unsafe {
-                            ogl33::glViewport(0, 0, win_width as i32, win_height as i32);
+                } => {
+                    if window_id == win_id {
+                        match win_event {
+                            WindowEvent::Resized(width, height) => {
+                                win_width = width as u32;
+                                win_height = height as u32;
+                                gui.size = (win_width, win_height);
+                                unsafe {
+                                    ogl33::glViewport(0, 0, win_width as i32, win_height as i32);
+                                }
+                            }
+                            _ => {}
                         }
                     }
-                    _ => {}
-                },
+                }
                 _ => (),
             }
         }
