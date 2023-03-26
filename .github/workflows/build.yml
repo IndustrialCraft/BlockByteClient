@@ -16,7 +16,7 @@ jobs:
         id: compile
         uses: rust-build/rust-build.action@v1.4.3
         with:
-          RUSTTARGET: x86_64-unknown-linux-musl
+          RUSTTARGET: x86_64-unknown-linux-gnu
           UPLOAD_MODE: none
           TOOLCHAIN_VERSION: nightly
       - name: Upload artifact
