@@ -246,7 +246,6 @@ fn main() {
     )
     .expect("Failed to set activity");
     }
-
     let chunk_shader = glwrappers::Shader::new(
         include_str!("shaders/chunk.vert").to_string(),
         include_str!("shaders/chunk.frag").to_string(),
