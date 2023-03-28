@@ -626,23 +626,25 @@ pub struct StaticBlockModel {
     pub cubes: Vec<BlockModelCube>,
 }
 impl StaticBlockModel {
-    pub fn new(json: &JsonValue, texture: &AtlassedTexture) -> Self {
+    pub fn new(json: &Vec<JsonValue>, texture: &AtlassedTexture) -> Self {
         let mut cubes = Vec::new();
-        for element in json["elements"].members() {
-            assert_eq!(element["type"], "cube");
-            let from = EntityModel::parse_array_into_position(&element["from"]);
-            let to = EntityModel::parse_array_into_position(&element["to"]);
-            let faces = &element["faces"];
-            cubes.push(BlockModelCube {
-                from,
-                to,
-                north_uv: EntityModel::parse_uv(&faces["north"], texture),
-                south_uv: EntityModel::parse_uv(&faces["south"], texture),
-                right_uv: EntityModel::parse_uv(&faces["east"], texture),
-                left_uv: EntityModel::parse_uv(&faces["west"], texture),
-                up_uv: EntityModel::parse_uv(&faces["up"], texture),
-                down_uv: EntityModel::parse_uv(&faces["down"], texture),
-            });
+        for json in json {
+            for element in json["elements"].members() {
+                assert_eq!(element["type"], "cube");
+                let from = EntityModel::parse_array_into_position(&element["from"]);
+                let to = EntityModel::parse_array_into_position(&element["to"]);
+                let faces = &element["faces"];
+                cubes.push(BlockModelCube {
+                    from,
+                    to,
+                    north_uv: EntityModel::parse_uv(&faces["north"], texture),
+                    south_uv: EntityModel::parse_uv(&faces["south"], texture),
+                    right_uv: EntityModel::parse_uv(&faces["east"], texture),
+                    left_uv: EntityModel::parse_uv(&faces["west"], texture),
+                    up_uv: EntityModel::parse_uv(&faces["up"], texture),
+                    down_uv: EntityModel::parse_uv(&faces["down"], texture),
+                });
+            }
         }
         StaticBlockModel { cubes }
     }

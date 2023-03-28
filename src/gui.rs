@@ -8,6 +8,7 @@ use std::{
 
 use json::JsonValue;
 use tungstenite::WebSocket;
+use ultraviolet::Vec3;
 
 use crate::{
     game::{self, AtlassedTexture, BlockRegistry},

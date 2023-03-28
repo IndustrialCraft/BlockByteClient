@@ -32,6 +32,7 @@ use glwrappers::Buffer;
 use glwrappers::VertexArray;
 use image::EncodableLayout;
 use image::RgbaImage;
+use json::JsonValue;
 use ogl33::c_char;
 use ogl33::c_void;
 use sdl2::image::LoadSurface;
@@ -140,37 +141,59 @@ fn main() {
                     let texture = texture_atlas
                         .get(model["texture"].as_str().unwrap())
                         .clone();
+                    let model = &model["model"];
+                    let models = if model.is_array() {
+                        let mut models = Vec::new();
+                        for model in model.members() {
+                            models.push(
+                                json::parse(
+                                    {
+                                        assets
+                                            .push(model.as_str().unwrap().to_string() + ".bbmodel");
+                                        let json = match std::fs::read_to_string(&assets) {
+                                            Ok(string) => string,
+                                            Err(_) => {
+                                                include_str!("missing_block.bbmodel").to_string()
+                                            }
+                                        };
+                                        assets.pop();
+                                        json
+                                    }
+                                    .as_str(),
+                                )
+                                .unwrap(),
+                            );
+                        }
+                        models
+                    } else {
+                        vec![{
+                            json::parse(
+                                {
+                                    assets.push(model.as_str().unwrap().to_string() + ".bbmodel");
+                                    let json = match std::fs::read_to_string(&assets) {
+                                        Ok(string) => string,
+                                        Err(_) => include_str!("missing_block.bbmodel").to_string(),
+                                    };
+                                    assets.pop();
+                                    json
+                                }
+                                .as_str(),
+                            )
+                            .unwrap()
+                        }]
+                    };
                     block_registry.blocks.insert(
                         id,
                         Block {
                             render_data: 0,
                             render_type: BlockRenderType::StaticModel(
-                                StaticBlockModel::new(
-                                    &json::parse(
-                                        {
-                                            assets.push(
-                                                model["model"].as_str().unwrap().to_string()
-                                                    + ".bbmodel",
-                                            );
-                                            let json = match std::fs::read_to_string(&assets) {
-                                                Ok(string) => string,
-                                                Err(_) => include_str!("missing_block.bbmodel")
-                                                    .to_string(),
-                                            };
-                                            assets.pop();
-                                            json
-                                        }
-                                        .as_str(),
-                                    )
-                                    .unwrap(),
-                                    &texture,
-                                ),
-                                model["north"].as_bool().unwrap(),
-                                model["south"].as_bool().unwrap(),
-                                model["right"].as_bool().unwrap(),
-                                model["left"].as_bool().unwrap(),
-                                model["up"].as_bool().unwrap(),
-                                model["down"].as_bool().unwrap(),
+                                StaticBlockModel::new(&models, &texture),
+                                model["north"].as_bool().unwrap_or(false),
+                                model["south"].as_bool().unwrap_or(false),
+                                model["right"].as_bool().unwrap_or(false),
+                                model["left"].as_bool().unwrap_or(false),
+                                model["up"].as_bool().unwrap_or(false),
+                                model["down"].as_bool().unwrap_or(false),
                             ),
                         },
                     );
