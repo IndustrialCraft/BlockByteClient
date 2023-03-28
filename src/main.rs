@@ -935,7 +935,7 @@ fn main() {
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
             block_breaking_manager.render(&projection);
-            gui.render(&gui_shader);
+            gui.render(&gui_shader, &camera.position);
             {
                 window.borrow().gl_swap_window();
             }

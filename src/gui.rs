@@ -708,7 +708,7 @@ impl<'a> GUI<'a> {
             _ => {}
         }
     }
-    fn to_quad_list(&self) -> Vec<GUIQuad> {
+    fn to_quad_list(&self, x: f32, y: f32, z: f32) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
         let mut elements: Vec<&GUIElement> = self.elements.values().collect();
         elements.sort_by(|a, b| a.z.cmp(&b.z));
@@ -768,7 +768,25 @@ impl<'a> GUI<'a> {
                 }
             }
         }
-
+        GUIComponent::TextComponent(
+            1.,
+            format!("x:{:.2} y:{:.2} z:{:.2}", x, y, z),
+            Color {
+                r: 0.,
+                g: 0.,
+                b: 0.,
+                a: 1.,
+            },
+        )
+        .add_quads(
+            &mut quads,
+            &self.font_renderer,
+            &self.texture_atlas,
+            &self.item_renderer,
+            &self.block_registry,
+            -1.1,
+            0.4,
+        );
         quads
     }
     pub fn on_mouse_move(&mut self, x: i32, y: i32) -> bool {
@@ -846,10 +864,10 @@ impl<'a> GUI<'a> {
         }
         !self.mouse_locked
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader) {
+    pub fn render(&mut self, shader: &glwrappers::Shader, player_pos: &Vec3) {
         self.renderer.render(
             shader,
-            self.to_quad_list(),
+            self.to_quad_list(player_pos.x, player_pos.y, player_pos.z),
             (self.size.1 as f32 / self.size.0 as f32) * self.gui_scale,
             self.gui_scale,
         );
