@@ -883,6 +883,10 @@ impl TextRenderer {
             ch - ('A' as u8)
         } else if ch.is_ascii_digit() {
             ch - ('0' as u8) + 27
+        } else if ch == ':' as u8 {
+            37
+        } else if ch == '.' as u8 {
+            38
         } else {
             26
         };
