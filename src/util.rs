@@ -38,6 +38,7 @@ pub enum NetworkMessageS2C {
     BlockAddItem(i32, i32, i32, f32, f32, f32, u32, u32) = 9,
     BlockRemoveItem(i32, i32, i32, u32) = 10,
     BlockMoveItem(i32, i32, i32, f32, f32, f32, u32) = 11,
+    Knockback(f32, f32, f32, bool) = 12,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -131,6 +132,12 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
+            12 => Some(Self::Knockback(
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),

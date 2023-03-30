@@ -577,6 +577,9 @@ fn main() {
                                     }
                                 }
                             }
+                            NetworkMessageS2C::Knockback(x, y, z, set) => {
+                                camera.knockback(x, y, z, set);
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {

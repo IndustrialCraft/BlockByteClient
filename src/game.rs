@@ -42,6 +42,12 @@ impl ClientPlayer {
         self.pitch_deg = (self.pitch_deg + d_pitch_deg).max(-89.0).min(89.0);
         self.yaw_deg = (self.yaw_deg + d_yaw_deg) % 360.0;
     }
+    pub fn knockback(&mut self, x: f32, y: f32, z: f32, set: bool) {
+        if set {
+            self.velocity = Vec3::zero();
+        }
+        self.velocity += Vec3::new(x, y, z);
+    }
     pub fn update_position(
         &mut self,
         keys: &std::collections::HashSet<Keycode>,
@@ -131,7 +137,8 @@ impl ClientPlayer {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
-
+        self.velocity.x *= 0.9;
+        self.velocity.z *= 0.9;
         self.position += total_move;
         self.velocity.y -= delta_time * 2f32;
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
