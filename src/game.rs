@@ -1054,9 +1054,9 @@ impl EntityModel {
                 .get_uniform_location("model\0")
                 .expect("uniform model not found"),
             ultraviolet::Mat4::from_translation(ultraviolet::Vec3 {
-                x: position.x,
+                x: position.x + (self.render_data.hitbox_w / 2.),
                 y: position.y,
-                z: position.z,
+                z: position.z + (self.render_data.hitbox_d / 2.),
             }) * ultraviolet::Mat4::from_rotation_y(rotation),
         );
         let mut bone_matrices = Vec::new();

@@ -845,9 +845,9 @@ fn main() {
             socket
                 .write_message(tungstenite::Message::Binary(
                     NetworkMessageC2S::PlayerPosition(
-                        camera.position.x,
+                        camera.position.x - 0.3,
                         camera.position.y,
-                        camera.position.z,
+                        camera.position.z - 0.3,
                         camera.is_shifting(),
                         camera.yaw_deg,
                     )
