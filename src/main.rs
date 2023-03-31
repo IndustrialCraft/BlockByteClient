@@ -253,7 +253,7 @@ fn main() {
     )
     .unwrap();
     socket.get_mut().set_nonblocking(true).unwrap();
-    let mut drpc = {
+    let mut drpc: Option<DiscordIpcClient> = {
         let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
         match drpc.connect() {
             Ok(_) => Some(drpc),

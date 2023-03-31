@@ -887,6 +887,8 @@ impl TextRenderer {
             37
         } else if ch == '.' as u8 {
             38
+        } else if ch == '-' as u8 {
+            39
         } else {
             26
         };

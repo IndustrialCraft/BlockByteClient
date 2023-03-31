@@ -459,7 +459,10 @@ impl<'a> Chunk<'a> {
         );
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
         unsafe {
+            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+            ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+            ogl33::glDisable(ogl33::GL_BLEND);
         }
     }
 }
