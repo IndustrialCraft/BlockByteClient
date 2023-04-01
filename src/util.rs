@@ -396,6 +396,7 @@ impl Face {
             ],
         }
     }
+    #[inline(always)]
     pub fn get_offset(&self) -> BlockPosition {
         match self {
             Self::Front => BlockPosition { x: 0, y: 0, z: -1 },
@@ -406,6 +407,7 @@ impl Face {
             Self::Down => BlockPosition { x: 0, y: -1, z: 0 },
         }
     }
+    #[inline(always)]
     pub fn opposite(&self) -> Self {
         match self {
             Self::Up => Self::Down,
@@ -465,9 +467,11 @@ impl std::ops::Add for BlockPosition {
     }
 }
 impl BlockPosition {
+    #[inline(always)]
     pub fn is_inside_origin_chunk(&self) -> bool {
         self.x >= 0 && self.x <= 15 && self.y >= 0 && self.y <= 15 && self.z >= 0 && self.z <= 15
     }
+    #[inline(always)]
     pub fn chunk_offset(&self) -> (u8, u8, u8) {
         (
             self.x.rem_euclid(16) as u8,
@@ -475,6 +479,7 @@ impl BlockPosition {
             self.z.rem_euclid(16) as u8,
         )
     }
+    #[inline(always)]
     pub fn to_chunk_pos(&self) -> ChunkPosition {
         ChunkPosition {
             x: ((self.x as f32) / 16f32).floor() as i32,
@@ -484,6 +489,7 @@ impl BlockPosition {
     }
 }
 impl Position {
+    #[inline(always)]
     pub fn to_chunk_pos(&self) -> ChunkPosition {
         ChunkPosition {
             x: ((self.x as f32) / 16f32).floor() as i32,
@@ -491,6 +497,7 @@ impl Position {
             z: ((self.z as f32) / 16f32).floor() as i32,
         }
     }
+    #[inline(always)]
     pub fn to_block_pos(&self) -> BlockPosition {
         BlockPosition {
             x: self.x.floor() as i32,

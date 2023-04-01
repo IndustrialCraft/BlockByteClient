@@ -141,10 +141,10 @@ fn main() {
                     let texture = texture_atlas
                         .get(model["texture"].as_str().unwrap())
                         .clone();
-                    let model = &model["model"];
-                    let models = if model.is_array() {
+                    let bb_model = &model["model"];
+                    let models = if bb_model.is_array() {
                         let mut models = Vec::new();
-                        for model in model.members() {
+                        for model in bb_model.members() {
                             models.push(
                                 json::parse(
                                     {
@@ -169,7 +169,8 @@ fn main() {
                         vec![{
                             json::parse(
                                 {
-                                    assets.push(model.as_str().unwrap().to_string() + ".bbmodel");
+                                    assets
+                                        .push(bb_model.as_str().unwrap().to_string() + ".bbmodel");
                                     let json = match std::fs::read_to_string(&assets) {
                                         Ok(string) => string,
                                         Err(_) => include_str!("missing_block.bbmodel").to_string(),
@@ -323,154 +324,8 @@ fn main() {
         texture_atlas.get("breaking9").clone(),
     ]);
     let mut last_frame_time = 0f32;
-    let (chunk_builder_input_tx, chunk_builder_input_rx) = std::sync::mpsc::channel();
-    let (chunk_builder_output_tx, chunk_builder_output_rx) = std::sync::mpsc::channel();
-    let chunk_builder_block_registry = block_registry.clone();
     let mut entities: HashMap<u32, game::Entity> = HashMap::new();
     let mut world_item_renderer = WorldItemRenderer::new();
-    std::thread::Builder::new()
-        .name("chunk_builder".to_string())
-        .stack_size(10000000)
-        .spawn(move || {
-            let block_registry: BlockRegistry = chunk_builder_block_registry;
-            loop {
-                let (pos, data): (ChunkPosition, Vec<u8>) = chunk_builder_input_rx.recv().unwrap();
-                let mut decoder = libflate::zlib::Decoder::new(data.as_slice()).unwrap();
-                let mut blocks_data = Vec::new();
-                std::io::copy(&mut decoder, &mut blocks_data).unwrap();
-                let mut blocks = [[[0u32; 16]; 16]; 16];
-                let mut blocks_data = blocks_data.as_slice();
-                for x in 0..16 {
-                    for y in 0..16 {
-                        for z in 0..16 {
-                            blocks[x][y][z] = blocks_data.read_be().unwrap();
-                        }
-                    }
-                }
-                let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
-                {
-                    for bx in 0..16i32 {
-                        let x = bx as f32;
-                        for by in 0..16i32 {
-                            let y = by as f32;
-                            for bz in 0..16i32 {
-                                let z = bz as f32;
-                                let block_id = blocks[bx as usize][by as usize][bz as usize];
-                                let block = block_registry.get_block(block_id);
-                                let position = BlockPosition {
-                                    x: bx,
-                                    y: by,
-                                    z: bz,
-                                };
-                                match &block.render_type {
-                                    BlockRenderType::Air => {}
-                                    BlockRenderType::Cube(north, south, right, left, up, down) => {
-                                        for face in [
-                                            Face::Front,
-                                            Face::Back,
-                                            Face::Up,
-                                            Face::Down,
-                                            Face::Left,
-                                            Face::Right,
-                                        ] {
-                                            let face_offset = face.get_offset();
-                                            let neighbor_pos = position + face_offset;
-                                            let neighbor_side_full =
-                                                if neighbor_pos.is_inside_origin_chunk() {
-                                                    block_registry
-                                                        .get_block(
-                                                            blocks[neighbor_pos.x as usize]
-                                                                [neighbor_pos.y as usize]
-                                                                [neighbor_pos.z as usize],
-                                                        )
-                                                        .is_face_full(&face.opposite())
-                                                } else {
-                                                    false
-                                                };
-                                            let texture = match face {
-                                                Face::Front => north,
-                                                Face::Back => south,
-                                                Face::Right => right,
-                                                Face::Left => left,
-                                                Face::Up => up,
-                                                Face::Down => down,
-                                            };
-                                            if !neighbor_side_full {
-                                                let face_vertices = face.get_vertices();
-                                                let uv = texture.get_coords();
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[0].x + x,
-                                                    y: face_vertices[0].y + y,
-                                                    z: face_vertices[0].z + z,
-                                                    u: uv.0,
-                                                    v: uv.1,
-                                                    render_data: block.render_data,
-                                                });
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[1].x + x,
-                                                    y: face_vertices[1].y + y,
-                                                    z: face_vertices[1].z + z,
-                                                    u: uv.2,
-                                                    v: uv.1,
-                                                    render_data: block.render_data,
-                                                });
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[2].x + x,
-                                                    y: face_vertices[2].y + y,
-                                                    z: face_vertices[2].z + z,
-                                                    u: uv.2,
-                                                    v: uv.3,
-                                                    render_data: block.render_data,
-                                                });
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[2].x + x,
-                                                    y: face_vertices[2].y + y,
-                                                    z: face_vertices[2].z + z,
-                                                    u: uv.2,
-                                                    v: uv.3,
-                                                    render_data: block.render_data,
-                                                });
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[3].x + x,
-                                                    y: face_vertices[3].y + y,
-                                                    z: face_vertices[3].z + z,
-                                                    u: uv.0,
-                                                    v: uv.3,
-                                                    render_data: block.render_data,
-                                                });
-                                                vertices.push(glwrappers::Vertex {
-                                                    x: face_vertices[0].x + x,
-                                                    y: face_vertices[0].y + y,
-                                                    z: face_vertices[0].z + z,
-                                                    u: uv.0,
-                                                    v: uv.1,
-                                                    render_data: block.render_data,
-                                                });
-                                            }
-                                        }
-                                    }
-                                    BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
-                                        model.add_to_chunk_mesh(
-                                            &mut vertices,
-                                            block.render_data,
-                                            BlockPosition {
-                                                x: bx,
-                                                y: by,
-                                                z: bz,
-                                            },
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                chunk_builder_output_tx
-                    .send((pos, blocks, vertices))
-                    .unwrap();
-            }
-        })
-        .unwrap();
     'main_loop: loop {
         let render_start_time = Instant::now();
 
@@ -488,10 +343,20 @@ fn main() {
                                     .expect(format!("chunk not loaded at {x} {y} {z}").as_str());
                             }
                             NetworkMessageS2C::LoadChunk(x, y, z, blocks) => {
-                                world.load_chunk(ChunkPosition { x, y, z });
-                                chunk_builder_input_tx
-                                    .send((ChunkPosition { x, y, z }, blocks))
-                                    .unwrap();
+                                let mut decoder =
+                                    libflate::zlib::Decoder::new(blocks.as_slice()).unwrap();
+                                let mut blocks_data = Vec::new();
+                                std::io::copy(&mut decoder, &mut blocks_data).unwrap();
+                                let mut blocks = [[[0u32; 16]; 16]; 16];
+                                let mut blocks_data = blocks_data.as_slice();
+                                for x in 0..16 {
+                                    for y in 0..16 {
+                                        for z in 0..16 {
+                                            blocks[x][y][z] = blocks_data.read_be().unwrap();
+                                        }
+                                    }
+                                }
+                                world.load_chunk(ChunkPosition { x, y, z }, blocks);
                             }
                             NetworkMessageS2C::UnloadChunk(x, y, z) => {
                                 world.unload_chunk(ChunkPosition { x, y, z });
@@ -817,13 +682,6 @@ fn main() {
             let time = timer.ticks() as f32 / 1000f32;
             let delta_time = time - last_time;
             last_time = time;
-
-            while let Ok(msg) = chunk_builder_output_rx.try_recv() {
-                if let Some(chunk) = world.get_mut_chunk(msg.0) {
-                    chunk.set_blocks_no_update(msg.1);
-                    chunk.upload_vertices(msg.2);
-                }
-            }
 
             block_breaking_manager.tick(delta_time, &mut socket);
             camera.update_position(&keys_held, delta_time, &world);

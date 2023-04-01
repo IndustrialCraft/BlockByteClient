@@ -241,10 +241,13 @@ pub struct Chunk<'a> {
     position: ChunkPosition,
     block_registry: &'a BlockRegistry,
     modified: bool,
-    loaded: bool,
 }
 impl<'a> Chunk<'a> {
-    pub fn new(position: ChunkPosition, block_registry: &'a BlockRegistry) -> Self {
+    pub fn new(
+        position: ChunkPosition,
+        block_registry: &'a BlockRegistry,
+        blocks: [[[u32; 16]; 16]; 16],
+    ) -> Self {
         let vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
         vao.bind();
         let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
@@ -285,30 +288,14 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(0);
         }
         Chunk {
-            blocks: [[[0; 16]; 16]; 16],
+            blocks,
             vao,
             vbo,
             vertex_count: 0,
             position,
             block_registry,
-            modified: false,
-            loaded: false,
+            modified: true,
         }
-    }
-    pub fn upload_vertices(&mut self, vertices: Vec<glwrappers::Vertex>) {
-        self.vertex_count = vertices.len() as u32;
-        self.vbo
-            .upload_data(bytemuck::cast_slice(&vertices), ogl33::GL_STATIC_DRAW);
-    }
-    pub fn set_blocks_no_update(&mut self, blocks: [[[u32; 16]; 16]; 16]) {
-        for x in 0..16 {
-            for y in 0..16 {
-                for z in 0..16 {
-                    self.blocks[x][y][z] = blocks[x][y][z];
-                }
-            }
-        }
-        self.loaded = true;
     }
     pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32) {
         self.blocks[x as usize][y as usize][z as usize] = block_type;
@@ -519,6 +506,7 @@ pub struct BlockRegistry {
     pub blocks: HashMap<u32, Block>,
 }
 impl BlockRegistry {
+    #[inline(always)]
     pub fn get_block(&self, id: u32) -> &Block {
         &self.blocks[&id]
     }
@@ -568,10 +556,14 @@ impl<'a> World<'a> {
             blocks_with_items: HashMap::new(),
         }
     }
-    pub fn load_chunk(&mut self, position: ChunkPosition) -> &mut Chunk<'a> {
+    pub fn load_chunk(
+        &mut self,
+        position: ChunkPosition,
+        blocks: [[[u32; 16]; 16]; 16],
+    ) -> &mut Chunk<'a> {
         if !self.chunks.contains_key(&position) {
             self.chunks
-                .insert(position, Chunk::new(position, self.block_registry));
+                .insert(position, Chunk::new(position, self.block_registry, blocks));
         }
         self.chunks.get_mut(&position).unwrap()
     }
@@ -600,12 +592,8 @@ impl<'a> World<'a> {
     pub fn get_block(&self, position: BlockPosition) -> Option<u32> {
         self.get_chunk(position.to_chunk_pos())
             .map_or(None, |chunk| {
-                if chunk.loaded {
-                    let offset = position.chunk_offset();
-                    Some(chunk.get_block(offset.0, offset.1, offset.2))
-                } else {
-                    None
-                }
+                let offset = position.chunk_offset();
+                Some(chunk.get_block(offset.0, offset.1, offset.2))
             })
     }
     pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
