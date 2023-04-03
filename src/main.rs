@@ -127,6 +127,7 @@ fn main() {
                         game::Block {
                             render_data: 0,
                             render_type: game::BlockRenderType::Cube(
+                                model["transparent"].as_bool().unwrap_or(false),
                                 texture_atlas.get(model["north"].as_str().unwrap()).clone(),
                                 texture_atlas.get(model["south"].as_str().unwrap()).clone(),
                                 texture_atlas.get(model["right"].as_str().unwrap()).clone(),
@@ -188,6 +189,7 @@ fn main() {
                         Block {
                             render_data: 0,
                             render_type: BlockRenderType::StaticModel(
+                                model["transparent"].as_bool().unwrap_or(false),
                                 StaticBlockModel::new(&models, &texture),
                                 model["north"].as_bool().unwrap_or(false),
                                 model["south"].as_bool().unwrap_or(false),
@@ -959,7 +961,7 @@ impl WorldItemRenderer {
                     let block = block_registry.get_block(*block);
                     match block.render_type {
                         BlockRenderType::Air => {}
-                        BlockRenderType::Cube(north, south, right, left, up, down) => {
+                        BlockRenderType::Cube(_, north, south, right, left, up, down) => {
                             WorldItemRenderer::add_face(
                                 &mut vertices,
                                 position.x,
@@ -1058,7 +1060,7 @@ impl WorldItemRenderer {
                             );
                             vertex_count += 6 * 6;
                         }
-                        BlockRenderType::StaticModel(_, _, _, _, _, _, _) => {}
+                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _) => {}
                     }
                 }
             }
@@ -1133,7 +1135,7 @@ pub fn raycast(
         if let Some(id) = world.get_block(position) {
             match &block_registry.get_block(id).render_type {
                 BlockRenderType::Air => {}
-                BlockRenderType::Cube(_, _, _, _, _, _) => {
+                BlockRenderType::Cube(_, _, _, _, _, _, _) => {
                     let last_pos = last_pos.to_block_pos();
                     let mut least_diff_face = Face::Up;
                     for face in enum_iterator::all::<Face>() {
@@ -1147,7 +1149,7 @@ pub fn raycast(
                     }
                     return Some(HitResult::Block(position, id, least_diff_face));
                 }
-                BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                BlockRenderType::StaticModel(_, model, _, _, _, _, _, _) => {
                     let x = ray_pos.x - (position.x as f32);
                     let y = ray_pos.y - (position.y as f32);
                     let z = ray_pos.z - (position.z as f32);
@@ -1382,10 +1384,10 @@ impl BlockOutline {
             HitResult::Block(_, id, _) => {
                 if self.last_entity || self.last_id != *id {
                     match &block_registry.get_block(*id).render_type {
-                        BlockRenderType::Cube(_, _, _, _, _, _) => {
+                        BlockRenderType::Cube(_, _, _, _, _, _, _) => {
                             self.upload_cube(1., 0., 0.);
                         }
-                        BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _) => {
                             self.upload_static_model(model, 1., 0., 0.);
                         }
                         _ => {}

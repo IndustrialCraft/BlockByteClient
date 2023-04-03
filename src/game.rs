@@ -238,6 +238,9 @@ pub struct Chunk<'a> {
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
     vertex_count: u32,
+    transparent_vao: glwrappers::VertexArray,
+    transparent_vbo: glwrappers::Buffer,
+    transparent_vertex_count: u32,
     position: ChunkPosition,
     block_registry: &'a BlockRegistry,
     modified: bool,
@@ -287,6 +290,45 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
         }
+        let transparent_vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
+        transparent_vao.bind();
+        let transparent_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
+            .expect("couldnt create vbo for chunk");
+        transparent_vbo.bind();
+        unsafe {
+            ogl33::glVertexAttribPointer(
+                0,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                0 as *const _,
+            );
+            ogl33::glVertexAttribPointer(
+                1,
+                2,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                12 as *const _,
+            );
+            ogl33::glVertexAttribIPointer(
+                2,
+                1,
+                ogl33::GL_BYTE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                20 as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(2);
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glEnableVertexAttribArray(0);
+        }
         Chunk {
             blocks,
             vao,
@@ -295,6 +337,9 @@ impl<'a> Chunk<'a> {
             position,
             block_registry,
             modified: true,
+            transparent_vbo,
+            transparent_vao,
+            transparent_vertex_count: 0,
         }
     }
     pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32) {
@@ -306,6 +351,7 @@ impl<'a> Chunk<'a> {
     }
     fn rebuild_chunk_mesh(&mut self) {
         let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
+        let mut transparent_vertices: Vec<glwrappers::Vertex> = Vec::new();
         for bx in 0..16i32 {
             let x = bx as f32;
             for by in 0..16i32 {
@@ -321,7 +367,7 @@ impl<'a> Chunk<'a> {
                     };
                     match &block.render_type {
                         BlockRenderType::Air => {}
-                        BlockRenderType::Cube(north, south, right, left, up, down) => {
+                        BlockRenderType::Cube(transparent, north, south, right, left, up, down) => {
                             for face in [
                                 Face::Front,
                                 Face::Back,
@@ -333,13 +379,14 @@ impl<'a> Chunk<'a> {
                                 let face_offset = face.get_offset();
                                 let neighbor_pos = position + face_offset;
                                 let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
-                                    self.block_registry
-                                        .get_block(
-                                            self.blocks[neighbor_pos.x as usize]
-                                                [neighbor_pos.y as usize]
-                                                [neighbor_pos.z as usize],
-                                        )
-                                        .is_face_full(&face.opposite())
+                                    let neighbor_block = self.block_registry.get_block(
+                                        self.blocks[neighbor_pos.x as usize]
+                                            [neighbor_pos.y as usize]
+                                            [neighbor_pos.z as usize],
+                                    );
+                                    neighbor_block.is_face_full(&face.opposite())
+                                        && !(neighbor_block.is_transparent()
+                                            && !block.is_transparent())
                                 } else {
                                     false
                                 };
@@ -354,6 +401,11 @@ impl<'a> Chunk<'a> {
                                 if !neighbor_side_full {
                                     let face_vertices = face.get_vertices();
                                     let uv = texture.get_coords();
+                                    let vertices = if *transparent {
+                                        &mut transparent_vertices
+                                    } else {
+                                        &mut vertices
+                                    };
                                     vertices.push(glwrappers::Vertex {
                                         x: face_vertices[0].x + x,
                                         y: face_vertices[0].y + y,
@@ -405,9 +457,13 @@ impl<'a> Chunk<'a> {
                                 }
                             }
                         }
-                        BlockRenderType::StaticModel(model, _, _, _, _, _, _) => {
+                        BlockRenderType::StaticModel(transparent, model, _, _, _, _, _, _) => {
                             model.add_to_chunk_mesh(
-                                &mut vertices,
+                                if *transparent {
+                                    &mut transparent_vertices
+                                } else {
+                                    &mut vertices
+                                },
                                 block.render_data,
                                 BlockPosition {
                                     x: bx,
@@ -423,33 +479,56 @@ impl<'a> Chunk<'a> {
         self.vertex_count = vertices.len() as u32;
         self.vbo
             .upload_data(bytemuck::cast_slice(&vertices), ogl33::GL_STATIC_DRAW);
+        self.transparent_vertex_count = transparent_vertices.len() as u32;
+        self.transparent_vbo.upload_data(
+            bytemuck::cast_slice(&transparent_vertices),
+            ogl33::GL_STATIC_DRAW,
+        );
     }
     pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
         if self.modified {
             self.rebuild_chunk_mesh();
             self.modified = false;
         }
-        if self.vertex_count == 0 {
-            return;
+        if self.vertex_count != 0 {
+            shader.set_uniform_matrix(
+                shader
+                    .get_uniform_location("model\0")
+                    .expect("uniform model not found"),
+                Mat4::from_translation(Vec3 {
+                    x: (self.position.x * 16) as f32,
+                    y: (self.position.y * 16) as f32,
+                    z: (self.position.z * 16) as f32,
+                }),
+            );
+            self.vao.bind();
+            unsafe {
+                ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+                ogl33::glEnable(ogl33::GL_BLEND);
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+                ogl33::glDisable(ogl33::GL_BLEND);
+            }
         }
-        self.vao.bind();
-        //self.vbo.bind();
-        shader.set_uniform_matrix(
-            shader
-                .get_uniform_location("model\0")
-                .expect("uniform model not found"),
-            Mat4::from_translation(Vec3 {
-                x: (self.position.x * 16) as f32,
-                y: (self.position.y * 16) as f32,
-                z: (self.position.z * 16) as f32,
-            }),
-        );
-        shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
-        unsafe {
-            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
-            ogl33::glEnable(ogl33::GL_BLEND);
-            ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
-            ogl33::glDisable(ogl33::GL_BLEND);
+    }
+    pub fn render_transparent(&mut self, shader: &glwrappers::Shader, time: f32) {
+        if self.transparent_vertex_count != 0 {
+            shader.set_uniform_matrix(
+                shader
+                    .get_uniform_location("model\0")
+                    .expect("uniform model not found"),
+                Mat4::from_translation(Vec3 {
+                    x: (self.position.x * 16) as f32,
+                    y: (self.position.y * 16) as f32,
+                    z: (self.position.z * 16) as f32,
+                }),
+            );
+            self.transparent_vao.bind();
+            unsafe {
+                ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+                ogl33::glEnable(ogl33::GL_BLEND);
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+                ogl33::glDisable(ogl33::GL_BLEND);
+            }
         }
     }
 }
@@ -457,6 +536,7 @@ impl<'a> Chunk<'a> {
 pub enum BlockRenderType {
     Air,
     Cube(
+        bool,
         AtlassedTexture,
         AtlassedTexture,
         AtlassedTexture,
@@ -464,7 +544,7 @@ pub enum BlockRenderType {
         AtlassedTexture,
         AtlassedTexture,
     ),
-    StaticModel(StaticBlockModel, bool, bool, bool, bool, bool, bool),
+    StaticModel(bool, StaticBlockModel, bool, bool, bool, bool, bool, bool),
 }
 #[derive(Clone)]
 pub struct Block {
@@ -481,7 +561,7 @@ impl Block {
     pub fn new_full(texture: AtlassedTexture, render_data: u8) -> Self {
         Block {
             render_type: BlockRenderType::Cube(
-                texture, texture, texture, texture, texture, texture,
+                false, texture, texture, texture, texture, texture, texture,
             ),
             render_data,
         }
@@ -489,8 +569,8 @@ impl Block {
     pub fn is_face_full(&self, face: &Face) -> bool {
         match self.render_type {
             BlockRenderType::Air => false,
-            BlockRenderType::Cube(_, _, _, _, _, _) => true,
-            BlockRenderType::StaticModel(_, north, south, right, left, up, down) => match face {
+            BlockRenderType::Cube(_, _, _, _, _, _, _) => true,
+            BlockRenderType::StaticModel(_, _, north, south, right, left, up, down) => match face {
                 Face::Front => north,
                 Face::Back => south,
                 Face::Left => left,
@@ -498,6 +578,13 @@ impl Block {
                 Face::Up => up,
                 Face::Down => down,
             },
+        }
+    }
+    pub fn is_transparent(&self) -> bool {
+        match self.render_type {
+            BlockRenderType::Air => false,
+            BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
+            BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _) => transparent,
         }
     }
 }
@@ -597,8 +684,12 @@ impl<'a> World<'a> {
             })
     }
     pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
+        shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
         for chunk in self.chunks.values_mut() {
             chunk.render(shader, time);
+        }
+        for chunk in self.chunks.values_mut() {
+            chunk.render_transparent(shader, time);
         }
     }
 }

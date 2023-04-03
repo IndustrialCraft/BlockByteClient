@@ -458,7 +458,7 @@ impl GUIComponent {
                             let block = block_registry.get_block(*block_id);
                             match block.render_type {
                                 game::BlockRenderType::Air => {}
-                                game::BlockRenderType::Cube(north, _, right, _, up, _) => {
+                                game::BlockRenderType::Cube(_, north, _, right, _, up, _) => {
                                     let top_texture = up.get_coords();
                                     let front_texture = north.get_coords();
                                     let right_texture = right.get_coords();
@@ -525,7 +525,9 @@ impl GUIComponent {
                                         v2: right_texture.1,
                                     });
                                 }
-                                game::BlockRenderType::StaticModel(_, _, _, _, _, _, _) => todo!(),
+                                game::BlockRenderType::StaticModel(_, _, _, _, _, _, _, _) => {
+                                    todo!()
+                                }
                             }
                         }
                     }
