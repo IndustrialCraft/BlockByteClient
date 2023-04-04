@@ -1,6 +1,5 @@
 #![allow(dead_code)]
-#![feature(hash_drain_filter)]
-
+#![feature(hash_drain_filter, int_roundings)]
 mod game;
 mod glwrappers;
 mod gui;

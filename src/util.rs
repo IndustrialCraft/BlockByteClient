@@ -468,8 +468,21 @@ impl std::ops::Add for BlockPosition {
 }
 impl BlockPosition {
     #[inline(always)]
-    pub fn is_inside_origin_chunk(&self) -> bool {
-        self.x >= 0 && self.x <= 15 && self.y >= 0 && self.y <= 15 && self.z >= 0 && self.z <= 15
+    pub fn offset_from_origin_chunk(&self) -> Option<Face> {
+        match (
+            (self.x as f32 / 16f32).floor() as i32,
+            (self.y as f32 / 16f32).floor() as i32,
+            (self.z as f32 / 16f32).floor() as i32,
+        ) {
+            (0, 0, -1) => Some(Face::Front),
+            (0, 0, 1) => Some(Face::Back),
+            (-1, 0, 0) => Some(Face::Left),
+            (1, 0, 0) => Some(Face::Right),
+            (0, 1, 0) => Some(Face::Up),
+            (0, -1, 0) => Some(Face::Down),
+            (0, 0, 0) => None,
+            _ => unreachable!(),
+        }
     }
     #[inline(always)]
     pub fn chunk_offset(&self) -> (u8, u8, u8) {

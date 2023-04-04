@@ -1,4 +1,9 @@
-use std::{collections::HashMap, ops::AddAssign, sync::Mutex};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    collections::HashMap,
+    ops::AddAssign,
+    sync::Mutex,
+};
 
 use crate::{
     glwrappers::Vertex,
@@ -349,7 +354,15 @@ impl<'a> Chunk<'a> {
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
         return self.blocks[x as usize][y as usize][z as usize];
     }
-    fn rebuild_chunk_mesh(&mut self) {
+    fn rebuild_chunk_mesh(
+        &mut self,
+        front_chunk: Ref<Chunk>,
+        back_chunk: Ref<Chunk>,
+        left_chunk: Ref<Chunk>,
+        right_chunk: Ref<Chunk>,
+        up_chunk: Ref<Chunk>,
+        down_chunk: Ref<Chunk>,
+    ) {
         let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
         let mut transparent_vertices: Vec<glwrappers::Vertex> = Vec::new();
         for bx in 0..16i32 {
@@ -378,18 +391,56 @@ impl<'a> Chunk<'a> {
                             ] {
                                 let face_offset = face.get_offset();
                                 let neighbor_pos = position + face_offset;
-                                let neighbor_side_full = if neighbor_pos.is_inside_origin_chunk() {
-                                    let neighbor_block = self.block_registry.get_block(
-                                        self.blocks[neighbor_pos.x as usize]
-                                            [neighbor_pos.y as usize]
-                                            [neighbor_pos.z as usize],
-                                    );
-                                    neighbor_block.is_face_full(&face.opposite())
-                                        && !(neighbor_block.is_transparent()
-                                            && !block.is_transparent())
-                                } else {
-                                    false
+                                let original_offset_in_chunk = position.chunk_offset();
+                                let offset_in_chunk = neighbor_pos.chunk_offset();
+                                let neighbor_block = match (BlockPosition {
+                                    x: original_offset_in_chunk.0 as i32 + face_offset.x,
+                                    y: original_offset_in_chunk.1 as i32 + face_offset.y,
+                                    z: original_offset_in_chunk.2 as i32 + face_offset.z,
+                                }
+                                .offset_from_origin_chunk())
+                                {
+                                    Some(Face::Front) => {
+                                        front_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Back) => {
+                                        back_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Left) => {
+                                        left_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Right) => {
+                                        right_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Up) => {
+                                        up_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Down) => {
+                                        down_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    None => {
+                                        self.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
                                 };
+                                let neighbor_block = self.block_registry.get_block(neighbor_block);
+                                let neighbor_side_full = neighbor_block
+                                    .is_face_full(&face.opposite())
+                                    && !(neighbor_block.is_transparent()
+                                        && !block.is_transparent());
                                 let texture = match face {
                                     Face::Front => north,
                                     Face::Back => south,
@@ -485,9 +536,18 @@ impl<'a> Chunk<'a> {
             ogl33::GL_STATIC_DRAW,
         );
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
+    pub fn render(
+        &mut self,
+        shader: &glwrappers::Shader,
+        front: Ref<Chunk>,
+        back: Ref<Chunk>,
+        left: Ref<Chunk>,
+        right: Ref<Chunk>,
+        up: Ref<Chunk>,
+        down: Ref<Chunk>,
+    ) {
         if self.modified {
-            self.rebuild_chunk_mesh();
+            self.rebuild_chunk_mesh(front, back, left, right, up, down);
             self.modified = false;
         }
         if self.vertex_count != 0 {
@@ -511,6 +571,9 @@ impl<'a> Chunk<'a> {
         }
     }
     pub fn render_transparent(&mut self, shader: &glwrappers::Shader, time: f32) {
+        if self.modified {
+            return;
+        }
         if self.transparent_vertex_count != 0 {
             shader.set_uniform_matrix(
                 shader
@@ -631,7 +694,7 @@ impl AtlassedTexture {
 }
 
 pub struct World<'a> {
-    chunks: std::collections::HashMap<ChunkPosition, Chunk<'a>>,
+    chunks: std::collections::HashMap<ChunkPosition, RefCell<Chunk<'a>>>,
     pub blocks_with_items: HashMap<BlockPosition, HashMap<u32, (f32, f32, f32, u32)>>,
     block_registry: &'a BlockRegistry,
 }
@@ -647,28 +710,35 @@ impl<'a> World<'a> {
         &mut self,
         position: ChunkPosition,
         blocks: [[[u32; 16]; 16]; 16],
-    ) -> &mut Chunk<'a> {
+    ) -> RefMut<'_, Chunk<'a>> {
         if !self.chunks.contains_key(&position) {
-            self.chunks
-                .insert(position, Chunk::new(position, self.block_registry, blocks));
+            self.chunks.insert(
+                position,
+                RefCell::new(Chunk::new(position, self.block_registry, blocks)),
+            );
         }
-        self.chunks.get_mut(&position).unwrap()
+        self.chunks.get_mut(&position).unwrap().borrow_mut()
     }
     pub fn unload_chunk(&mut self, position: ChunkPosition) {
         self.chunks.remove(&position);
         self.blocks_with_items
             .drain_filter(|pos, _| pos.to_chunk_pos() == position);
     }
-    pub fn get_chunk(&self, position: ChunkPosition) -> Option<&Chunk> {
-        self.chunks.get(&position)
+    pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk>> {
+        match self.chunks.get(&position) {
+            Some(chunk) => Some(chunk.borrow()),
+            None => None,
+        }
     }
-    pub fn get_mut_chunk(&mut self, position: ChunkPosition) -> Option<&mut Chunk<'a>> {
-        self.chunks.get_mut(&position)
+    pub fn get_mut_chunk(&mut self, position: ChunkPosition) -> Option<RefMut<'_, Chunk<'a>>> {
+        self.chunks
+            .get_mut(&position)
+            .map(|chunk| chunk.borrow_mut())
     }
     pub fn set_block(&mut self, position: BlockPosition, id: u32) -> Result<(), ()> {
         self.blocks_with_items.remove(&position);
         match self.get_mut_chunk(position.to_chunk_pos()) {
-            Some(chunk) => {
+            Some(mut chunk) => {
                 let offset = position.chunk_offset();
                 chunk.set_block(offset.0, offset.1, offset.2, id);
                 Ok(())
@@ -685,11 +755,52 @@ impl<'a> World<'a> {
     }
     pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
-        for chunk in self.chunks.values_mut() {
-            chunk.render(shader, time);
+        for chunk in self.chunks.values() {
+            let pos = { chunk.borrow().position.clone() };
+            let front = self
+                .chunks
+                .get(&pos.add(0, 0, -1))
+                .map(|chunk| chunk.borrow());
+            let back = self
+                .chunks
+                .get(&pos.add(0, 0, 1))
+                .map(|chunk| chunk.borrow());
+            let left = self
+                .chunks
+                .get(&pos.add(-1, 0, 0))
+                .map(|chunk| chunk.borrow());
+            let right = self
+                .chunks
+                .get(&pos.add(1, 0, 0))
+                .map(|chunk| chunk.borrow());
+            let up = self
+                .chunks
+                .get(&pos.add(0, 1, 0))
+                .map(|chunk| chunk.borrow());
+            let down = self
+                .chunks
+                .get(&pos.add(0, -1, 0))
+                .map(|chunk| chunk.borrow());
+            if front.is_some()
+                && back.is_some()
+                && left.is_some()
+                && right.is_some()
+                && up.is_some()
+                && down.is_some()
+            {
+                chunk.borrow_mut().render(
+                    shader,
+                    front.unwrap(),
+                    back.unwrap(),
+                    left.unwrap(),
+                    right.unwrap(),
+                    up.unwrap(),
+                    down.unwrap(),
+                );
+            }
         }
-        for chunk in self.chunks.values_mut() {
-            chunk.render_transparent(shader, time);
+        for chunk in self.chunks.values() {
+            chunk.borrow_mut().render_transparent(shader, time);
         }
     }
 }
