@@ -351,6 +351,9 @@ impl<'a> Chunk<'a> {
         self.blocks[x as usize][y as usize][z as usize] = block_type;
         self.modified = true;
     }
+    pub fn schedule_mesh_rebuild(&mut self) {
+        self.modified = true;
+    }
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
         return self.blocks[x as usize][y as usize][z as usize];
     }
@@ -737,9 +740,40 @@ impl<'a> World<'a> {
     }
     pub fn set_block(&mut self, position: BlockPosition, id: u32) -> Result<(), ()> {
         self.blocks_with_items.remove(&position);
-        match self.get_mut_chunk(position.to_chunk_pos()) {
+        let chunk_position = position.to_chunk_pos();
+        let offset = position.chunk_offset();
+        if offset.0 == 0 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(-1, 0, 0)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        if offset.0 == 15 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(1, 0, 0)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        if offset.1 == 0 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, -1, 0)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        if offset.1 == 15 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 15, 0)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        if offset.2 == 0 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 0, -1)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        if offset.2 == 15 {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 0, 1)) {
+                chunk.schedule_mesh_rebuild();
+            }
+        }
+        match self.get_mut_chunk(chunk_position) {
             Some(mut chunk) => {
-                let offset = position.chunk_offset();
                 chunk.set_block(offset.0, offset.1, offset.2, id);
                 Ok(())
             }
@@ -755,6 +789,7 @@ impl<'a> World<'a> {
     }
     pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
+        let mut rendered_chunks = Vec::new();
         for chunk in self.chunks.values() {
             let pos = { chunk.borrow().position.clone() };
             let front = self
@@ -797,9 +832,10 @@ impl<'a> World<'a> {
                     up.unwrap(),
                     down.unwrap(),
                 );
+                rendered_chunks.push(chunk);
             }
         }
-        for chunk in self.chunks.values() {
+        for chunk in rendered_chunks {
             chunk.borrow_mut().render_transparent(shader, time);
         }
     }
