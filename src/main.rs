@@ -65,11 +65,7 @@ fn main() {
             .unwrap(),
     );
     let _gl_context = { window.borrow().gl_create_context().unwrap() }; //do not drop
-    let mut camera = game::ClientPlayer::at_position(ultraviolet::Vec3 {
-        x: 0f32,
-        y: 50f32,
-        z: 0f32,
-    });
+
     let (mut win_width, mut win_height) = { window.borrow().size() };
     let mut last_time = 0f32;
     let mut keys_held: std::collections::HashSet<sdl2::keyboard::Keycode> =
@@ -134,6 +130,7 @@ fn main() {
                                 texture_atlas.get(model["up"].as_str().unwrap()).clone(),
                                 texture_atlas.get(model["down"].as_str().unwrap()).clone(),
                             ),
+                            fluid: model["fluid"].as_bool().unwrap_or(false),
                         },
                     );
                 }
@@ -197,6 +194,7 @@ fn main() {
                                 model["up"].as_bool().unwrap_or(false),
                                 model["down"].as_bool().unwrap_or(false),
                             ),
+                            fluid: model["fluid"].as_bool().unwrap_or(false),
                         },
                     );
                 }
@@ -246,6 +244,14 @@ fn main() {
         }
         (block_registry, entity_registry, item_registry)
     };
+    let mut camera = game::ClientPlayer::at_position(
+        ultraviolet::Vec3 {
+            x: 0f32,
+            y: 50f32,
+            z: 0f32,
+        },
+        &block_registry,
+    );
     let addr = args.next().unwrap();
     let tcp_stream = std::net::TcpStream::connect(&addr).unwrap();
     let (mut socket, _response) = tungstenite::client::client_with_config(
@@ -324,12 +330,12 @@ fn main() {
         texture_atlas.get("breaking8").clone(),
         texture_atlas.get("breaking9").clone(),
     ]);
-    let mut last_frame_time = 0f32;
+    let mut fps = 0u32;
+    let mut last_fps_cnt = 0u32;
+    let mut last_fps_time = timer.ticks();
     let mut entities: HashMap<u32, game::Entity> = HashMap::new();
     let mut world_item_renderer = WorldItemRenderer::new();
     'main_loop: loop {
-        let render_start_time = Instant::now();
-
         'message_loop: loop {
             match socket.read_message() {
                 Ok(msg) => match msg {
@@ -566,31 +572,36 @@ fn main() {
                             }
                         }
                         if mouse_btn == MouseButton::Right {
-                            if let Some(raycast_result) = &raycast_result {
-                                if !gui.on_right_click() {
-                                    match raycast_result {
-                                        HitResult::Block(position, _, face) => {
-                                            socket
-                                                .write_message(tungstenite::Message::Binary(
-                                                    NetworkMessageC2S::RightClickBlock(
-                                                        position.x,
-                                                        position.y,
-                                                        position.z,
-                                                        *face,
-                                                        camera.is_shifting(),
-                                                    )
+                            if !gui.on_right_click() {
+                                match &raycast_result {
+                                    Some(HitResult::Block(position, _, face)) => {
+                                        socket
+                                            .write_message(tungstenite::Message::Binary(
+                                                NetworkMessageC2S::RightClickBlock(
+                                                    position.x,
+                                                    position.y,
+                                                    position.z,
+                                                    *face,
+                                                    camera.is_shifting(),
+                                                )
+                                                .to_data(),
+                                            ))
+                                            .unwrap();
+                                    }
+                                    Some(HitResult::Entity(id)) => {
+                                        socket
+                                            .write_message(tungstenite::Message::Binary(
+                                                NetworkMessageC2S::RightClickEntity(*id).to_data(),
+                                            ))
+                                            .unwrap();
+                                    }
+                                    None => {
+                                        socket
+                                            .write_message(tungstenite::Message::Binary(
+                                                NetworkMessageC2S::RightClick(camera.is_shifting())
                                                     .to_data(),
-                                                ))
-                                                .unwrap();
-                                        }
-                                        HitResult::Entity(id) => {
-                                            socket
-                                                .write_message(tungstenite::Message::Binary(
-                                                    NetworkMessageC2S::RightClickEntity(*id)
-                                                        .to_data(),
-                                                ))
-                                                .unwrap();
-                                        }
+                                            ))
+                                            .unwrap();
                                     }
                                 }
                             }
@@ -684,6 +695,13 @@ fn main() {
             let delta_time = time - last_time;
             last_time = time;
 
+            fps += 1;
+            if last_fps_time + 1000 < timer.ticks() {
+                last_fps_cnt = fps;
+                last_fps_time = timer.ticks();
+                fps = 0;
+            }
+
             block_breaking_manager.tick(delta_time, &mut socket);
             camera.update_position(&keys_held, delta_time, &world);
             {
@@ -691,11 +709,8 @@ fn main() {
                     .borrow_mut()
                     .set_title(
                         format!(
-                            "BlockByte {:.1} {:.1} {:.1} {}",
-                            camera.position.x,
-                            camera.position.y,
-                            camera.position.z,
-                            last_frame_time
+                            "BlockByte {:.1} {:.1} {:.1}",
+                            camera.position.x, camera.position.y, camera.position.z
                         )
                         .as_str(),
                     )
@@ -797,12 +812,10 @@ fn main() {
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
             block_breaking_manager.render(&projection);
-            gui.render(&gui_shader, &camera.position);
+            gui.render(&gui_shader, &camera.position, last_fps_cnt);
             {
                 window.borrow().gl_swap_window();
             }
-            last_frame_time =
-                (1000000f64 / (render_start_time.elapsed().as_micros() as f64)) as u32 as f32;
         }
     }
     if let Some(drpc) = &mut drpc {

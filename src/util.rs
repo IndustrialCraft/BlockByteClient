@@ -159,6 +159,7 @@ pub enum NetworkMessageC2S {
     LeftClickEntity(u32),
     RightClickEntity(u32),
     GuiScroll(String, i32, i32, bool),
+    RightClick(bool),
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -232,6 +233,10 @@ impl NetworkMessageC2S {
                 write_string(&mut data, id);
                 data.write_be(*x).unwrap();
                 data.write_be(*y).unwrap();
+                data.write_be(*shifting).unwrap();
+            }
+            Self::RightClick(shifting) => {
+                data.write_be(11u8).unwrap();
                 data.write_be(*shifting).unwrap();
             }
         };

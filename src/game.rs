@@ -16,16 +16,17 @@ use uuid::Uuid;
 
 use crate::glwrappers::{self, ModelVertex};
 
-#[derive(Debug, Clone, Copy)]
-pub struct ClientPlayer {
+#[derive(Clone, Copy)]
+pub struct ClientPlayer<'a> {
     pub position: Vec3,
     velocity: Vec3,
     pub pitch_deg: f32,
     pub yaw_deg: f32,
     shifting: bool,
     shifting_animation: f32,
+    block_registry: &'a BlockRegistry,
 }
-impl ClientPlayer {
+impl<'a> ClientPlayer<'a> {
     const UP: Vec3 = Vec3 {
         x: 0.0,
         y: 1.0,
@@ -81,11 +82,7 @@ impl ClientPlayer {
             },
         );
         self.shifting = keys.contains(&Keycode::LShift);
-        if keys.contains(&Keycode::Space)
-            && ClientPlayer::collides_at(position.add(0., -0.1, 0.), world, self.shifting)
-        {
-            self.velocity.y = 0.8;
-        }
+
         if !(move_vector.x == 0.0 && move_vector.y == 0.0 && move_vector.z == 0.0) {
             move_vector = move_vector.normalized();
         }
@@ -93,12 +90,35 @@ impl ClientPlayer {
         if self.shifting {
             move_vector /= 2.;
         }
+        if keys.contains(&Keycode::Space) {
+            let block = world.get_block(position.to_block_pos()).unwrap();
+            let block = self.block_registry.get_block(block);
+            if block.fluid {
+                move_vector.y += 0.5;
+                self.velocity.y = 0.;
+            } else {
+                if ClientPlayer::collides_at(
+                    self.block_registry,
+                    position.add(0., -0.1, 0.),
+                    world,
+                    self.shifting,
+                ) {
+                    self.velocity.y = 0.8;
+                }
+            }
+        }
         let mut total_move = (move_vector + self.velocity) * (delta_time * 10f32);
-        if ClientPlayer::collides_at(position.add(total_move.x, 0., 0.), world, self.shifting) {
+        if ClientPlayer::collides_at(
+            self.block_registry,
+            position.add(total_move.x, 0., 0.),
+            world,
+            self.shifting,
+        ) {
             total_move.x = 0.;
             self.velocity.x = 0.;
         }
         if ClientPlayer::collides_at(
+            self.block_registry,
             position.add(total_move.x, total_move.y, 0.),
             world,
             self.shifting,
@@ -107,6 +127,7 @@ impl ClientPlayer {
             self.velocity.y = 0.;
         }
         if ClientPlayer::collides_at(
+            self.block_registry,
             position.add(total_move.x, total_move.y, total_move.z),
             world,
             self.shifting,
@@ -116,8 +137,14 @@ impl ClientPlayer {
         }
         if (total_move.x != 0.
             && self.shifting
-            && ClientPlayer::collides_at(position.add(0., -0.1, 0.), world, self.shifting))
+            && ClientPlayer::collides_at(
+                self.block_registry,
+                position.add(0., -0.1, 0.),
+                world,
+                self.shifting,
+            ))
             && !ClientPlayer::collides_at(
+                self.block_registry,
                 position.add(total_move.x, -0.1, 0.),
                 world,
                 self.shifting,
@@ -129,11 +156,13 @@ impl ClientPlayer {
         if (total_move.z != 0.
             && self.shifting
             && ClientPlayer::collides_at(
+                self.block_registry,
                 position.add(total_move.x, -0.1, 0.),
                 world,
                 self.shifting,
             ))
             && !ClientPlayer::collides_at(
+                self.block_registry,
                 position.add(total_move.x, -0.1, total_move.z),
                 world,
                 self.shifting,
@@ -149,7 +178,12 @@ impl ClientPlayer {
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
     }
-    fn collides_at(position: util::Position, world: &World, shifting: bool) -> bool {
+    fn collides_at(
+        block_registry: &BlockRegistry,
+        position: util::Position,
+        world: &World,
+        shifting: bool,
+    ) -> bool {
         let bounding_box = AABB {
             x: position.x - 0.3,
             y: position.y,
@@ -159,16 +193,19 @@ impl ClientPlayer {
             d: 0.6,
         };
         for block_pos in bounding_box.get_collisions_on_grid() {
-            if world
-                .get_block(block_pos)
-                .map_or(true, |block| block != 0u32)
-            {
+            if world.get_block(block_pos).map_or(true, |block| {
+                if block == 0u32 {
+                    return false;
+                }
+                let block = block_registry.get_block(block);
+                !block.fluid
+            }) {
                 return true;
             }
         }
         return false;
     }
-    pub const fn at_position(position: Vec3) -> Self {
+    pub const fn at_position(position: Vec3, block_registry: &'a BlockRegistry) -> Self {
         Self {
             position,
             velocity: Vec3::new(0., 0., 0.),
@@ -176,6 +213,7 @@ impl ClientPlayer {
             yaw_deg: 0.0,
             shifting: false,
             shifting_animation: 0f32,
+            block_registry,
         }
     }
     fn eye_height_diff(&self) -> f32 {
@@ -573,10 +611,7 @@ impl<'a> Chunk<'a> {
             }
         }
     }
-    pub fn render_transparent(&mut self, shader: &glwrappers::Shader, time: f32) {
-        if self.modified {
-            return;
-        }
+    pub fn render_transparent(&mut self, shader: &glwrappers::Shader) {
         if self.transparent_vertex_count != 0 {
             shader.set_uniform_matrix(
                 shader
@@ -592,7 +627,7 @@ impl<'a> Chunk<'a> {
             unsafe {
                 ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
                 ogl33::glEnable(ogl33::GL_BLEND);
-                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
                 ogl33::glDisable(ogl33::GL_BLEND);
             }
         }
@@ -616,20 +651,14 @@ pub enum BlockRenderType {
 pub struct Block {
     pub render_type: BlockRenderType,
     pub render_data: u8,
+    pub fluid: bool,
 }
 impl Block {
     pub fn new_air() -> Self {
         Block {
             render_data: 0,
             render_type: BlockRenderType::Air,
-        }
-    }
-    pub fn new_full(texture: AtlassedTexture, render_data: u8) -> Self {
-        Block {
-            render_type: BlockRenderType::Cube(
-                false, texture, texture, texture, texture, texture, texture,
-            ),
-            render_data,
+            fluid: false,
         }
     }
     pub fn is_face_full(&self, face: &Face) -> bool {
@@ -835,8 +864,13 @@ impl<'a> World<'a> {
                 rendered_chunks.push(chunk);
             }
         }
+        /*rendered_chunks.sort_by(|a, b| {
+            let a = a.borrow();
+            let b = b.borrow();
+            let a_dist = (a.position.x-)
+        });*/
         for chunk in rendered_chunks {
-            chunk.borrow_mut().render_transparent(shader, time);
+            chunk.borrow_mut().render_transparent(shader);
         }
     }
 }
