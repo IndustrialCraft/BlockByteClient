@@ -889,6 +889,8 @@ pub struct BlockModelCube {
     pub left_uv: (f32, f32, f32, f32),
     pub up_uv: (f32, f32, f32, f32),
     pub down_uv: (f32, f32, f32, f32),
+    pub origin: (f32, f32, f32),
+    pub rotation: (f32, f32, f32),
 }
 #[derive(Clone)]
 pub struct StaticBlockModel {
@@ -903,6 +905,11 @@ impl StaticBlockModel {
                 let from = EntityModel::parse_array_into_position(&element["from"]);
                 let to = EntityModel::parse_array_into_position(&element["to"]);
                 let faces = &element["faces"];
+                let rotation = if element["rotation"].is_null() {
+                    (0., 0., 0.)
+                } else {
+                    StaticBlockModel::parse_array_into_three_tuple(&element["rotation"])
+                };
                 cubes.push(BlockModelCube {
                     from,
                     to,
@@ -912,10 +919,19 @@ impl StaticBlockModel {
                     left_uv: EntityModel::parse_uv(&faces["west"], texture),
                     up_uv: EntityModel::parse_uv(&faces["up"], texture),
                     down_uv: EntityModel::parse_uv(&faces["down"], texture),
+                    origin: StaticBlockModel::parse_array_into_three_tuple(&element["origin"]),
+                    rotation,
                 });
             }
         }
         StaticBlockModel { cubes }
+    }
+    pub fn parse_array_into_three_tuple(json: &JsonValue) -> (f32, f32, f32) {
+        (
+            json[0].as_f32().unwrap(),
+            json[1].as_f32().unwrap(),
+            json[2].as_f32().unwrap(),
+        )
     }
     pub fn add_to_chunk_mesh(
         &self,
@@ -936,7 +952,26 @@ impl StaticBlockModel {
                 cube.right_uv,
                 render_data,
                 position,
+                cube.rotation,
+                cube.origin,
             );
+        }
+    }
+    fn rotate_point(
+        point: (f32, f32, f32),
+        matrix: &Mat4,
+        origin: (f32, f32, f32),
+        position: BlockPosition,
+    ) -> Position {
+        let vec = matrix.transform_vec3(Vec3::new(
+            point.0 - 0.5 - origin.0,
+            point.1 - 0.5 - origin.1,
+            point.2 - 0.5 - origin.2,
+        ));
+        Position {
+            x: vec.x + 0.5 + origin.0 + (position.x as f32),
+            y: vec.y + 0.5 + origin.1 + (position.y as f32),
+            z: vec.z + 0.5 + origin.2 + (position.z as f32),
         }
     }
     fn create_cube(
@@ -951,168 +986,33 @@ impl StaticBlockModel {
         east: (f32, f32, f32, f32),
         render_data: u8,
         position: BlockPosition,
+        rotation: (f32, f32, f32),
+        origin: (f32, f32, f32),
     ) {
-        let from = Position {
-            x: (from.x) + position.x as f32,
-            y: (from.y) + position.y as f32,
-            z: (from.z) + position.z as f32,
-        };
-        let to = Position {
-            x: (to.x) + position.x as f32,
-            y: (to.y) + position.y as f32,
-            z: (to.z) + position.z as f32,
-        };
-        let size = Position {
-            x: to.x - from.x,
-            y: to.y - from.y,
-            z: to.z - from.z,
-        };
-        StaticBlockModel::create_face(
-            vertices,
-            from,
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            down,
-            render_data,
+        let origin = (origin.0 / 16., origin.1 / 16., origin.2 / 16.);
+        let matrix = Mat4::from_euler_angles(
+            rotation.0.to_radians(),
+            rotation.1.to_radians(),
+            rotation.2.to_radians(),
         );
-        StaticBlockModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            up,
-            render_data,
-        );
-        StaticBlockModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            west,
-            render_data,
-        );
-        StaticBlockModel::create_face(
-            vertices,
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            east,
-            render_data,
-        );
-        StaticBlockModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            north,
-            render_data,
-        );
-        StaticBlockModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            south,
-            render_data,
-        );
+        let p000 =
+            StaticBlockModel::rotate_point((from.x, from.y, from.z), &matrix, origin, position);
+        let p001 =
+            StaticBlockModel::rotate_point((from.x, from.y, to.z), &matrix, origin, position);
+        let p010 =
+            StaticBlockModel::rotate_point((from.x, to.y, from.z), &matrix, origin, position);
+        let p011 = StaticBlockModel::rotate_point((from.x, to.y, to.z), &matrix, origin, position);
+        let p100 =
+            StaticBlockModel::rotate_point((to.x, from.y, from.z), &matrix, origin, position);
+        let p101 = StaticBlockModel::rotate_point((to.x, from.y, to.z), &matrix, origin, position);
+        let p110 = StaticBlockModel::rotate_point((to.x, to.y, from.z), &matrix, origin, position);
+        let p111 = StaticBlockModel::rotate_point((to.x, to.y, to.z), &matrix, origin, position);
+        StaticBlockModel::create_face(vertices, p000, p100, p101, p001, down, render_data);
+        StaticBlockModel::create_face(vertices, p010, p110, p111, p011, up, render_data);
+        StaticBlockModel::create_face(vertices, p000, p001, p011, p010, west, render_data);
+        StaticBlockModel::create_face(vertices, p100, p101, p111, p110, east, render_data);
+        StaticBlockModel::create_face(vertices, p000, p100, p110, p010, north, render_data);
+        StaticBlockModel::create_face(vertices, p001, p101, p111, p011, south, render_data);
     }
     fn create_face(
         vertices: &mut Vec<Vertex>,
