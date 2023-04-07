@@ -194,11 +194,8 @@ impl<'a> ClientPlayer<'a> {
         };
         for block_pos in bounding_box.get_collisions_on_grid() {
             if world.get_block(block_pos).map_or(true, |block| {
-                if block == 0u32 {
-                    return false;
-                }
                 let block = block_registry.get_block(block);
-                !block.fluid
+                !block.fluid && !block.no_collision
             }) {
                 return true;
             }
@@ -652,6 +649,7 @@ pub struct Block {
     pub render_type: BlockRenderType,
     pub render_data: u8,
     pub fluid: bool,
+    pub no_collision: bool,
 }
 impl Block {
     pub fn new_air() -> Self {
@@ -659,6 +657,7 @@ impl Block {
             render_data: 0,
             render_type: BlockRenderType::Air,
             fluid: false,
+            no_collision: true,
         }
     }
     pub fn is_face_full(&self, face: &Face) -> bool {

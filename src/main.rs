@@ -131,6 +131,7 @@ fn main() {
                                 texture_atlas.get(model["down"].as_str().unwrap()).clone(),
                             ),
                             fluid: model["fluid"].as_bool().unwrap_or(false),
+                            no_collision: model["no_collide"].as_bool().unwrap_or(false),
                         },
                     );
                 }
@@ -195,6 +196,7 @@ fn main() {
                                 model["down"].as_bool().unwrap_or(false),
                             ),
                             fluid: model["fluid"].as_bool().unwrap_or(false),
+                            no_collision: model["no_collide"].as_bool().unwrap_or(false),
                         },
                     );
                 }
