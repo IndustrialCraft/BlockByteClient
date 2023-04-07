@@ -826,8 +826,8 @@ fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, 
     let mut texture_map = std::collections::HashMap::new();
     let mut packer =
         texture_packer::TexturePacker::new_skyline(texture_packer::TexturePackerConfig {
-            max_width: 256,
-            max_height: 256,
+            max_width: 512,
+            max_height: 512,
             allow_rotation: false,
             texture_outlines: false,
             border_padding: 0,
