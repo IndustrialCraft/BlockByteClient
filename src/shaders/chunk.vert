@@ -11,6 +11,10 @@ void main() {
   vec3 position = pos;
   if(render_data == 1)
     position.y += sin(time)*0.1;
+  if(render_data == 2){
+    position.z += cos(time+ceil(position.x)+50)*0.2*mod(position.y,1.);        
+    position.x += sin(time+ceil(position.x))*0.2*mod(position.y,1.);
+  }
   gl_Position = projection_view * model * vec4(position, 1.0);
   frag_tex = tex;
 }

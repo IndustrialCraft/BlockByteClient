@@ -120,7 +120,7 @@ fn main() {
                     block_registry.blocks.insert(
                         id,
                         game::Block {
-                            render_data: 0,
+                            render_data: model["render_data"].as_u8().unwrap_or(0),
                             render_type: game::BlockRenderType::Cube(
                                 model["transparent"].as_bool().unwrap_or(false),
                                 texture_atlas.get(model["north"].as_str().unwrap()).clone(),
@@ -183,7 +183,7 @@ fn main() {
                     block_registry.blocks.insert(
                         id,
                         Block {
-                            render_data: 0,
+                            render_data: model["render_data"].as_u8().unwrap_or(0),
                             render_type: BlockRenderType::StaticModel(
                                 model["transparent"].as_bool().unwrap_or(false),
                                 StaticBlockModel::new(&models, &texture),
