@@ -8,6 +8,7 @@ use std::{
 use crate::{
     glwrappers::Vertex,
     util::{self, *},
+    TextureAtlas,
 };
 use json::JsonValue;
 use sdl2::keyboard::Keycode;
@@ -419,14 +420,7 @@ impl<'a> Chunk<'a> {
                     match &block.render_type {
                         BlockRenderType::Air => {}
                         BlockRenderType::Cube(transparent, north, south, right, left, up, down) => {
-                            for face in [
-                                Face::Front,
-                                Face::Back,
-                                Face::Up,
-                                Face::Down,
-                                Face::Left,
-                                Face::Right,
-                            ] {
+                            for face in Face::all() {
                                 let face_offset = face.get_offset();
                                 let neighbor_pos = position + face_offset;
                                 let original_offset_in_chunk = position.chunk_offset();
@@ -546,13 +540,87 @@ impl<'a> Chunk<'a> {
                                 }
                             }
                         }
-                        BlockRenderType::StaticModel(transparent, model, _, _, _, _, _, _) => {
+                        BlockRenderType::StaticModel(
+                            transparent,
+                            model,
+                            _,
+                            _,
+                            _,
+                            _,
+                            _,
+                            _,
+                            connections,
+                        ) => {
+                            let vertices = if *transparent {
+                                &mut transparent_vertices
+                            } else {
+                                &mut vertices
+                            };
+                            for face in Face::all() {
+                                let face_offset = face.get_offset();
+                                let neighbor_pos = position + face_offset;
+                                let original_offset_in_chunk = position.chunk_offset();
+                                let offset_in_chunk = neighbor_pos.chunk_offset();
+                                let neighbor_block = match (BlockPosition {
+                                    x: original_offset_in_chunk.0 as i32 + face_offset.x,
+                                    y: original_offset_in_chunk.1 as i32 + face_offset.y,
+                                    z: original_offset_in_chunk.2 as i32 + face_offset.z,
+                                }
+                                .offset_from_origin_chunk())
+                                {
+                                    Some(Face::Front) => {
+                                        front_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Back) => {
+                                        back_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Left) => {
+                                        left_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Right) => {
+                                        right_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Up) => {
+                                        up_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    Some(Face::Down) => {
+                                        down_chunk.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                    None => {
+                                        self.blocks[offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize]
+                                    }
+                                };
+                                if let Some(connection) =
+                                    connections.by_face(face).get(&neighbor_block)
+                                {
+                                    connection.add_to_chunk_mesh(
+                                        vertices,
+                                        block.render_data,
+                                        BlockPosition {
+                                            x: bx,
+                                            y: by,
+                                            z: bz,
+                                        },
+                                    );
+                                }
+                            }
+
                             model.add_to_chunk_mesh(
-                                if *transparent {
-                                    &mut transparent_vertices
-                                } else {
-                                    &mut vertices
-                                },
+                                vertices,
                                 block.render_data,
                                 BlockPosition {
                                     x: bx,
@@ -599,12 +667,20 @@ impl<'a> Chunk<'a> {
                     z: (self.position.z * 16) as f32,
                 }),
             );
+            /*shader.set_uniform_vec3(
+                shader
+                    .get_uniform_location("chunk_pos\0")
+                    .expect("uniform chunk_pos not found"),
+                (
+                    self.position.x * 16,
+                    self.position.y * 16,
+                    self.position.z * 16,
+                ),
+            );*/
             self.vao.bind();
             unsafe {
-                ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
-                ogl33::glEnable(ogl33::GL_BLEND);
-                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
                 ogl33::glDisable(ogl33::GL_BLEND);
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
             }
         }
     }
@@ -620,6 +696,12 @@ impl<'a> Chunk<'a> {
                     z: (self.position.z * 16) as f32,
                 }),
             );
+            /*shader.set_uniform_vec3(
+                shader
+                    .get_uniform_location("chunk_pos\0")
+                    .expect("uniform chunk_pos not found"),
+                (self.position.x, self.position.y, self.position.z),
+            );*/
             self.transparent_vao.bind();
             unsafe {
                 ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
@@ -627,6 +709,37 @@ impl<'a> Chunk<'a> {
                 ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
                 ogl33::glDisable(ogl33::GL_BLEND);
             }
+        }
+    }
+}
+#[derive(Clone)]
+pub struct StaticBlockModelConnections {
+    pub front: HashMap<u32, StaticBlockModel>,
+    pub back: HashMap<u32, StaticBlockModel>,
+    pub left: HashMap<u32, StaticBlockModel>,
+    pub right: HashMap<u32, StaticBlockModel>,
+    pub up: HashMap<u32, StaticBlockModel>,
+    pub down: HashMap<u32, StaticBlockModel>,
+}
+impl StaticBlockModelConnections {
+    pub fn by_face_mut(&mut self, face: &Face) -> &mut HashMap<u32, StaticBlockModel> {
+        match face {
+            Face::Front => &mut self.front,
+            Face::Back => &mut self.back,
+            Face::Left => &mut self.left,
+            Face::Right => &mut self.right,
+            Face::Up => &mut self.up,
+            Face::Down => &mut self.down,
+        }
+    }
+    pub fn by_face(&self, face: &Face) -> &HashMap<u32, StaticBlockModel> {
+        match face {
+            Face::Front => &self.front,
+            Face::Back => &self.back,
+            Face::Left => &self.left,
+            Face::Right => &self.right,
+            Face::Up => &self.up,
+            Face::Down => &self.down,
         }
     }
 }
@@ -642,7 +755,17 @@ pub enum BlockRenderType {
         AtlassedTexture,
         AtlassedTexture,
     ),
-    StaticModel(bool, StaticBlockModel, bool, bool, bool, bool, bool, bool),
+    StaticModel(
+        bool,
+        StaticBlockModel,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        bool,
+        StaticBlockModelConnections,
+    ),
 }
 #[derive(Clone)]
 pub struct Block {
@@ -664,21 +787,23 @@ impl Block {
         match self.render_type {
             BlockRenderType::Air => false,
             BlockRenderType::Cube(_, _, _, _, _, _, _) => true,
-            BlockRenderType::StaticModel(_, _, north, south, right, left, up, down) => match face {
-                Face::Front => north,
-                Face::Back => south,
-                Face::Left => left,
-                Face::Right => right,
-                Face::Up => up,
-                Face::Down => down,
-            },
+            BlockRenderType::StaticModel(_, _, north, south, right, left, up, down, _) => {
+                match face {
+                    Face::Front => north,
+                    Face::Back => south,
+                    Face::Left => left,
+                    Face::Right => right,
+                    Face::Up => up,
+                    Face::Down => down,
+                }
+            }
         }
     }
     pub fn is_transparent(&self) -> bool {
         match self.render_type {
             BlockRenderType::Air => false,
             BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
-            BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _) => transparent,
+            BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _) => transparent,
         }
     }
 }
@@ -879,7 +1004,7 @@ pub struct Entity {
     pub rotation: f32,
     pub items: HashMap<u32, u32>,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BlockModelCube {
     pub from: Position,
     pub to: Position,

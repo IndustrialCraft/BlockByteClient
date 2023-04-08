@@ -244,7 +244,7 @@ impl NetworkMessageC2S {
     }
 }
 
-#[derive(Sequence, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Face {
     Front = 0,
     Back = 1,
@@ -254,6 +254,27 @@ pub enum Face {
     Right = 5,
 }
 impl Face {
+    const FACES: [Face; 6] = [
+        Face::Front,
+        Face::Back,
+        Face::Left,
+        Face::Right,
+        Face::Up,
+        Face::Down,
+    ];
+    pub fn all() -> &'static [Face; 6] {
+        &Face::FACES
+    }
+    pub fn get_name(&self) -> &str {
+        match self {
+            Face::Front => "front",
+            Face::Back => "back",
+            Face::Left => "left",
+            Face::Right => "right",
+            Face::Up => "up",
+            Face::Down => "down",
+        }
+    }
     pub fn from_id(id: u8) -> Option<Self> {
         match id {
             0 => Some(Face::Front),

@@ -132,6 +132,11 @@ impl Shader {
             ogl33::glUniform1f(uniform_location as i32, value);
         }
     }
+    pub fn set_uniform_vec3(&self, uniform_location: u32, value: (i32, i32, i32)) {
+        unsafe {
+            ogl33::glUniform3i(uniform_location as i32, value.0, value.1, value.2);
+        }
+    }
 }
 pub struct VertexArray {
     vao_id: u32,

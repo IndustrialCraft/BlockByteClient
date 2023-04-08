@@ -27,6 +27,7 @@ use game::BlockRenderType;
 use game::Entity;
 use game::EntityModel;
 use game::StaticBlockModel;
+use game::StaticBlockModelConnections;
 use glwrappers::Buffer;
 use glwrappers::VertexArray;
 use image::EncodableLayout;
@@ -181,6 +182,58 @@ fn main() {
                             .unwrap()
                         }]
                     };
+                    let mut connections = StaticBlockModelConnections {
+                        front: HashMap::new(),
+                        back: HashMap::new(),
+                        left: HashMap::new(),
+                        right: HashMap::new(),
+                        up: HashMap::new(),
+                        down: HashMap::new(),
+                    };
+                    let connections_json = &model["connections"];
+                    if !connections_json.is_null() {
+                        for face in Face::all() {
+                            let down = &connections_json[face.get_name()];
+                            if !down.is_null() {
+                                for connection in down.entries() {
+                                    let id: u32 = connection.0.parse().unwrap();
+                                    connections.by_face_mut(face).insert(
+                                        id,
+                                        StaticBlockModel::new(
+                                            &vec![{
+                                                json::parse(
+                                                    {
+                                                        assets.push(
+                                                            connection.1["model"]
+                                                                .as_str()
+                                                                .unwrap()
+                                                                .to_string()
+                                                                + ".bbmodel",
+                                                        );
+                                                        let json = match std::fs::read_to_string(
+                                                            &assets,
+                                                        ) {
+                                                            Ok(string) => string,
+                                                            Err(_) => include_str!(
+                                                                "missing_block.bbmodel"
+                                                            )
+                                                            .to_string(),
+                                                        };
+                                                        assets.pop();
+                                                        json
+                                                    }
+                                                    .as_str(),
+                                                )
+                                                .unwrap()
+                                            }],
+                                            texture_atlas
+                                                .get(connection.1["texture"].as_str().unwrap()),
+                                        ),
+                                    );
+                                }
+                            }
+                        }
+                    }
                     block_registry.blocks.insert(
                         id,
                         Block {
@@ -194,6 +247,7 @@ fn main() {
                                 model["left"].as_bool().unwrap_or(false),
                                 model["up"].as_bool().unwrap_or(false),
                                 model["down"].as_bool().unwrap_or(false),
+                                connections,
                             ),
                             fluid: model["fluid"].as_bool().unwrap_or(false),
                             no_collision: model["no_collide"].as_bool().unwrap_or(false),
@@ -1074,7 +1128,7 @@ impl WorldItemRenderer {
                             );
                             vertex_count += 6 * 6;
                         }
-                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _) => {}
+                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _) => {}
                     }
                 }
             }
@@ -1152,18 +1206,18 @@ pub fn raycast(
                 BlockRenderType::Cube(_, _, _, _, _, _, _) => {
                     let last_pos = last_pos.to_block_pos();
                     let mut least_diff_face = Face::Up;
-                    for face in enum_iterator::all::<Face>() {
+                    for face in Face::all() {
                         let offset = face.get_offset();
                         let diff = (position.x - last_pos.x + offset.x).abs()
                             + (position.y - last_pos.y + offset.y).abs()
                             + (position.z - last_pos.z + offset.z).abs();
                         if diff <= 1 {
-                            least_diff_face = face;
+                            least_diff_face = face.clone();
                         }
                     }
                     return Some(HitResult::Block(position, id, least_diff_face));
                 }
-                BlockRenderType::StaticModel(_, model, _, _, _, _, _, _) => {
+                BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _) => {
                     let x = ray_pos.x - (position.x as f32);
                     let y = ray_pos.y - (position.y as f32);
                     let z = ray_pos.z - (position.z as f32);
@@ -1182,7 +1236,7 @@ pub fn raycast(
                             };
                             let mut least_diff_face = Face::Up;
                             let mut least_diff = 10.;
-                            for face in enum_iterator::all::<Face>() {
+                            for face in Face::all() {
                                 let offset = face.get_offset();
                                 let diff = (((x - cube.from.x) / size.x) - 0.5 + (offset.x as f32))
                                     .abs()
@@ -1192,7 +1246,7 @@ pub fn raycast(
                                         .abs();
                                 if diff <= least_diff {
                                     least_diff = diff;
-                                    least_diff_face = face;
+                                    least_diff_face = face.clone();
                                 }
                             }
                             return Some(HitResult::Block(
@@ -1401,7 +1455,7 @@ impl BlockOutline {
                         BlockRenderType::Cube(_, _, _, _, _, _, _) => {
                             self.upload_cube(1., 0., 0.);
                         }
-                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _) => {
+                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _) => {
                             self.upload_static_model(model, 1., 0., 0.);
                         }
                         _ => {}
