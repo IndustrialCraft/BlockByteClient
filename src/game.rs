@@ -965,12 +965,12 @@ impl StaticBlockModel {
     ) -> Position {
         let vec = matrix.transform_vec3(Vec3::new(
             point.0 - 0.5 - origin.0,
-            point.1 - 0.5 - origin.1,
+            point.1 - origin.1,
             point.2 - 0.5 - origin.2,
         ));
         Position {
             x: vec.x + 0.5 + origin.0 + (position.x as f32),
-            y: vec.y + 0.5 + origin.1 + (position.y as f32),
+            y: vec.y + origin.1 + (position.y as f32),
             z: vec.z + 0.5 + origin.2 + (position.z as f32),
         }
     }
