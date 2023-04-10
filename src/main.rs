@@ -757,7 +757,7 @@ fn main() {
                 fps = 0;
             }
 
-            block_breaking_manager.tick(delta_time, &mut socket);
+            block_breaking_manager.tick(delta_time, &mut socket, keys_held.contains(&Keycode::R));
             camera.update_position(&keys_held, delta_time, &world);
             {
                 window
@@ -1646,6 +1646,7 @@ struct BlockBreakingManager {
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
     breaking_textures: Vec<AtlassedTexture>,
+    just_pressed: bool,
 }
 impl BlockBreakingManager {
     pub fn new(breaking_textures: Vec<AtlassedTexture>) -> Self {
@@ -1690,11 +1691,21 @@ impl BlockBreakingManager {
             vao,
             vbo,
             breaking_textures,
+            just_pressed: false,
         }
     }
-    pub fn tick(&mut self, delta_time: f32, socket: &mut WebSocket<TcpStream>) {
+    pub fn tick(
+        &mut self,
+        delta_time: f32,
+        socket: &mut WebSocket<TcpStream>,
+        keep_breaking: bool,
+    ) {
         if let Some(target_block) = self.target_block {
-            if self.key_down && self.breaking_animation.is_none() && !self.time_requested {
+            if self.key_down
+                && self.breaking_animation.is_none()
+                && !self.time_requested
+                && (keep_breaking || self.just_pressed)
+            {
                 self.time_requested = true;
                 self.id += 1;
                 socket
@@ -1722,6 +1733,7 @@ impl BlockBreakingManager {
                 }
             }
         }
+        self.just_pressed = false;
     }
     pub fn render(&mut self, projection: &Mat4) {
         if let Some(target_block) = self.target_block {
@@ -1812,6 +1824,9 @@ impl BlockBreakingManager {
         }
     }
     pub fn set_left_click_held(&mut self, held: bool) {
+        if (!self.key_down) && held {
+            self.just_pressed = true;
+        }
         self.key_down = held;
         if !held {
             self.breaking_animation = None;
