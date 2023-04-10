@@ -35,6 +35,7 @@ use image::RgbaImage;
 use json::JsonValue;
 use ogl33::c_char;
 use ogl33::c_void;
+use rustc_hash::FxHashMap;
 use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
@@ -109,32 +110,30 @@ fn main() {
         let content = json::parse(std::fs::read_to_string(&assets).unwrap().as_str()).unwrap();
         assets.pop();
 
-        let mut block_registry = BlockRegistry {
-            blocks: HashMap::new(),
-        };
+        let mut block_registry = BlockRegistry { blocks: Vec::new() };
         block_registry.blocks.insert(0, Block::new_air());
+        block_registry
+            .blocks
+            .resize(content["blocks"].len() + 1, Block::new_air());
         for block in content["blocks"].members() {
             let id = block["id"].as_u32().unwrap();
             let model = &block["model"];
             match model["type"].as_str().unwrap() {
                 "cube" => {
-                    block_registry.blocks.insert(
-                        id,
-                        game::Block {
-                            render_data: model["render_data"].as_u8().unwrap_or(0),
-                            render_type: game::BlockRenderType::Cube(
-                                model["transparent"].as_bool().unwrap_or(false),
-                                texture_atlas.get(model["north"].as_str().unwrap()).clone(),
-                                texture_atlas.get(model["south"].as_str().unwrap()).clone(),
-                                texture_atlas.get(model["right"].as_str().unwrap()).clone(),
-                                texture_atlas.get(model["left"].as_str().unwrap()).clone(),
-                                texture_atlas.get(model["up"].as_str().unwrap()).clone(),
-                                texture_atlas.get(model["down"].as_str().unwrap()).clone(),
-                            ),
-                            fluid: model["fluid"].as_bool().unwrap_or(false),
-                            no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        },
-                    );
+                    block_registry.blocks[id as usize] = game::Block {
+                        render_data: model["render_data"].as_u8().unwrap_or(0),
+                        render_type: game::BlockRenderType::Cube(
+                            model["transparent"].as_bool().unwrap_or(false),
+                            texture_atlas.get(model["north"].as_str().unwrap()).clone(),
+                            texture_atlas.get(model["south"].as_str().unwrap()).clone(),
+                            texture_atlas.get(model["right"].as_str().unwrap()).clone(),
+                            texture_atlas.get(model["left"].as_str().unwrap()).clone(),
+                            texture_atlas.get(model["up"].as_str().unwrap()).clone(),
+                            texture_atlas.get(model["down"].as_str().unwrap()).clone(),
+                        ),
+                        fluid: model["fluid"].as_bool().unwrap_or(false),
+                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                    };
                 }
                 "static" => {
                     let texture = texture_atlas
@@ -234,25 +233,23 @@ fn main() {
                             }
                         }
                     }
-                    block_registry.blocks.insert(
-                        id,
-                        Block {
-                            render_data: model["render_data"].as_u8().unwrap_or(0),
-                            render_type: BlockRenderType::StaticModel(
-                                model["transparent"].as_bool().unwrap_or(false),
-                                StaticBlockModel::new(&models, &texture),
-                                model["north"].as_bool().unwrap_or(false),
-                                model["south"].as_bool().unwrap_or(false),
-                                model["right"].as_bool().unwrap_or(false),
-                                model["left"].as_bool().unwrap_or(false),
-                                model["up"].as_bool().unwrap_or(false),
-                                model["down"].as_bool().unwrap_or(false),
-                                connections,
-                            ),
-                            fluid: model["fluid"].as_bool().unwrap_or(false),
-                            no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        },
-                    );
+                    block_registry.blocks[id as usize] = Block {
+                        render_data: model["render_data"].as_u8().unwrap_or(0),
+                        render_type: BlockRenderType::StaticModel(
+                            model["transparent"].as_bool().unwrap_or(false),
+                            StaticBlockModel::new(&models, &texture),
+                            model["north"].as_bool().unwrap_or(false),
+                            model["south"].as_bool().unwrap_or(false),
+                            model["right"].as_bool().unwrap_or(false),
+                            model["left"].as_bool().unwrap_or(false),
+                            model["up"].as_bool().unwrap_or(false),
+                            model["down"].as_bool().unwrap_or(false),
+                            connections,
+                            model["foliage"].as_bool().unwrap_or(false),
+                        ),
+                        fluid: model["fluid"].as_bool().unwrap_or(false),
+                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                    };
                 }
                 _ => unreachable!(),
             }
@@ -318,11 +315,12 @@ fn main() {
     .unwrap();
     socket.get_mut().set_nonblocking(true).unwrap();
     let mut drpc: Option<DiscordIpcClient> = {
-        let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
+        /*let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
         match drpc.connect() {
             Ok(_) => Some(drpc),
             Err(_) => None,
-        }
+        }*/
+        None
     };
     if let Some(drpc) = &mut drpc {
         println!("discord rpc started!");
@@ -391,6 +389,7 @@ fn main() {
     let mut last_fps_time = timer.ticks();
     let mut entities: HashMap<u32, game::Entity> = HashMap::new();
     let mut world_item_renderer = WorldItemRenderer::new();
+    let mut sky_renderer = SkyRenderer::new();
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -799,7 +798,16 @@ fn main() {
                 ) * camera.create_view_matrix(),
             );
             {
-                world.render(&chunk_shader, (timer.ticks() as f32) / 1000f32);
+                world.render(
+                    &chunk_shader,
+                    (timer.ticks() as f32) / 1000f32,
+                    Position {
+                        x: camera.position.x,
+                        y: camera.position.y,
+                        z: camera.position.z,
+                    }
+                    .to_chunk_pos(),
+                );
             }
 
             model_shader.use_program();
@@ -868,6 +876,15 @@ fn main() {
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
             block_breaking_manager.render(&projection);
+            sky_renderer.render(
+                ultraviolet::projection::perspective_gl(
+                    90f32.to_radians(),
+                    (win_width as f32) / (win_height as f32),
+                    0.01,
+                    1000.,
+                ) * camera.create_view_matrix_no_pos(),
+                delta_time,
+            );
             gui.render(&gui_shader, &camera.position, last_fps_cnt);
             {
                 window.borrow().gl_swap_window();
@@ -876,6 +893,140 @@ fn main() {
     }
     if let Some(drpc) = &mut drpc {
         drpc.close().unwrap();
+    }
+}
+struct SkyRenderer {
+    vao: glwrappers::VertexArray,
+    vbo: glwrappers::Buffer,
+    shader: glwrappers::Shader,
+    time: f32,
+}
+impl SkyRenderer {
+    pub fn new() -> Self {
+        let vao = glwrappers::VertexArray::new().unwrap();
+        vao.bind();
+        let mut vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array).unwrap();
+        vbo.bind();
+        unsafe {
+            ogl33::glVertexAttribPointer(
+                0,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::SkyVertex>()
+                    .try_into()
+                    .unwrap(),
+                0 as *const _,
+            );
+            ogl33::glVertexAttribPointer(
+                1,
+                1,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::SkyVertex>()
+                    .try_into()
+                    .unwrap(),
+                std::mem::size_of::<[f32; 3]>() as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glEnableVertexAttribArray(0);
+        }
+        let mut vertices = Vec::new();
+        //up
+        SkyRenderer::add_face(
+            &mut vertices,
+            (-1., 1., -1., 1.),
+            (1., 1., -1., 1.),
+            (1., 1., 1., 1.),
+            (-1., 1., 1., 1.),
+        );
+        //down
+        SkyRenderer::add_face(
+            &mut vertices,
+            (-1., -1., -1., 0.),
+            (1., -1., -1., 0.),
+            (1., -1., 1., 0.),
+            (-1., -1., 1., 0.),
+        );
+        //north
+        SkyRenderer::add_face(
+            &mut vertices,
+            (-1., -1., -1., 0.),
+            (1., -1., -1., 0.),
+            (1., 1., -1., 1.),
+            (-1., 1., -1., 1.),
+        );
+        //south
+        SkyRenderer::add_face(
+            &mut vertices,
+            (-1., -1., 1., 0.),
+            (1., -1., 1., 0.),
+            (1., 1., 1., 1.),
+            (-1., 1., 1., 1.),
+        );
+        //left
+        SkyRenderer::add_face(
+            &mut vertices,
+            (-1., -1., -1., 0.),
+            (-1., -1., 1., 0.),
+            (-1., 1., 1., 1.),
+            (-1., 1., -1., 1.),
+        );
+        //right
+        SkyRenderer::add_face(
+            &mut vertices,
+            (1., -1., -1., 0.),
+            (1., -1., 1., 0.),
+            (1., 1., 1., 1.),
+            (1., 1., -1., 1.),
+        );
+        vbo.upload_data(
+            bytemuck::cast_slice(vertices.as_slice()),
+            ogl33::GL_STATIC_DRAW,
+        );
+        SkyRenderer {
+            shader: glwrappers::Shader::new(
+                include_str!("shaders/sky.vert").to_string(),
+                include_str!("shaders/sky.frag").to_string(),
+            ),
+            time: 0.,
+            vbo,
+            vao,
+        }
+    }
+    fn add_face(
+        vertices: &mut Vec<glwrappers::SkyVertex>,
+        p1: (f32, f32, f32, f32),
+        p2: (f32, f32, f32, f32),
+        p3: (f32, f32, f32, f32),
+        p4: (f32, f32, f32, f32),
+    ) {
+        vertices.push([p1.0, p1.1, p1.2, p1.3]);
+        vertices.push([p2.0, p2.1, p2.2, p2.3]);
+        vertices.push([p3.0, p3.1, p3.2, p3.3]);
+        vertices.push([p3.0, p3.1, p3.2, p3.3]);
+        vertices.push([p4.0, p4.1, p4.2, p4.3]);
+        vertices.push([p1.0, p1.1, p1.2, p1.3]);
+    }
+    pub fn render(&mut self, view: Mat4, delta_time: f32) {
+        self.shader.use_program();
+        self.vao.bind();
+        let projection_view_loc = self
+            .shader
+            .get_uniform_location("projection_view\0")
+            .expect("transform uniform not found");
+        let time_loc = self.shader.get_uniform_location("daytime\0").unwrap();
+        self.shader.set_uniform_matrix(projection_view_loc, view);
+        self.shader.set_uniform_float(time_loc, self.time);
+        //self.time += delta_time * 0.05;
+        if self.time > 2. {
+            self.time = 0.;
+        }
+        unsafe {
+            ogl33::glDepthFunc(ogl33::GL_LEQUAL);
+            ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, 6 * 2 * 3);
+            ogl33::glDepthFunc(ogl33::GL_LESS);
+        }
     }
 }
 fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, RgbaImage) {
@@ -1128,7 +1279,7 @@ impl WorldItemRenderer {
                             );
                             vertex_count += 6 * 6;
                         }
-                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _) => {}
+                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {}
                     }
                 }
             }
@@ -1217,7 +1368,7 @@ pub fn raycast(
                     }
                     return Some(HitResult::Block(position, id, least_diff_face));
                 }
-                BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _) => {
+                BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _, _) => {
                     let x = ray_pos.x - (position.x as f32);
                     let y = ray_pos.y - (position.y as f32);
                     let z = ray_pos.z - (position.z as f32);
@@ -1455,7 +1606,7 @@ impl BlockOutline {
                         BlockRenderType::Cube(_, _, _, _, _, _, _) => {
                             self.upload_cube(1., 0., 0.);
                         }
-                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _) => {
+                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _, _) => {
                             self.upload_static_model(model, 1., 0., 0.);
                         }
                         _ => {}

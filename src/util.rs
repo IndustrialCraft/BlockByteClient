@@ -495,20 +495,25 @@ impl std::ops::Add for BlockPosition {
 impl BlockPosition {
     #[inline(always)]
     pub fn offset_from_origin_chunk(&self) -> Option<Face> {
-        match (
-            (self.x as f32 / 16f32).floor() as i32,
-            (self.y as f32 / 16f32).floor() as i32,
-            (self.z as f32 / 16f32).floor() as i32,
-        ) {
-            (0, 0, -1) => Some(Face::Front),
-            (0, 0, 1) => Some(Face::Back),
-            (-1, 0, 0) => Some(Face::Left),
-            (1, 0, 0) => Some(Face::Right),
-            (0, 1, 0) => Some(Face::Up),
-            (0, -1, 0) => Some(Face::Down),
-            (0, 0, 0) => None,
-            _ => unreachable!(),
+        if self.x < 0 {
+            return Some(Face::Left);
         }
+        if self.x >= 16 {
+            return Some(Face::Right);
+        }
+        if self.y < 0 {
+            return Some(Face::Down);
+        }
+        if self.y >= 16 {
+            return Some(Face::Up);
+        }
+        if self.z < 0 {
+            return Some(Face::Front);
+        }
+        if self.z >= 16 {
+            return Some(Face::Back);
+        }
+        return None;
     }
     #[inline(always)]
     pub fn chunk_offset(&self) -> (u8, u8, u8) {
@@ -566,5 +571,11 @@ impl ChunkPosition {
             y: self.y + y,
             z: self.z + z,
         }
+    }
+    pub fn distance_squared(&self, other: &ChunkPosition) -> u32 {
+        let xd = self.x - other.x;
+        let yd = self.y - other.y;
+        let zd = self.z - other.z;
+        (xd * xd + yd * yd + zd * zd) as u32
     }
 }

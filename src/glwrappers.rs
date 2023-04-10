@@ -25,6 +25,7 @@ unsafe impl bytemuck::Pod for ModelVertex {}
 pub type ColorVertex = [f32; 3 + 3];
 pub type GuiVertex = [f32; 2 + 2 + 4];
 pub type BasicVertex = [f32; 3 + 2];
+pub type SkyVertex = [f32; 3 + 1];
 
 pub struct Shader {
     shader_program: u32,

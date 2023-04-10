@@ -2,6 +2,7 @@ use std::{
     cell::{Ref, RefCell, RefMut},
     collections::HashMap,
     ops::AddAssign,
+    rc::Rc,
     sync::Mutex,
 };
 
@@ -11,6 +12,7 @@ use crate::{
     TextureAtlas,
 };
 use json::JsonValue;
+use rustc_hash::FxHashMap;
 use sdl2::keyboard::Keycode;
 use ultraviolet::*;
 use uuid::Uuid;
@@ -100,7 +102,7 @@ impl<'a> ClientPlayer<'a> {
             } else {
                 if ClientPlayer::collides_at(
                     self.block_registry,
-                    position.add(0., -0.1, 0.),
+                    position.add(0., -0.2, 0.),
                     world,
                     self.shifting,
                 ) {
@@ -238,6 +240,17 @@ impl<'a> ClientPlayer<'a> {
             Self::UP,
         )
     }
+    pub fn create_view_matrix_no_pos(&self) -> ultraviolet::Mat4 {
+        Mat4::look_at(
+            Vec3 {
+                x: 0.,
+                y: 0.,
+                z: 0.,
+            },
+            self.make_front(),
+            Self::UP,
+        )
+    }
 }
 
 struct AABB {
@@ -282,11 +295,30 @@ pub struct Chunk<'a> {
     transparent_vao: glwrappers::VertexArray,
     transparent_vbo: glwrappers::Buffer,
     transparent_vertex_count: u32,
+    foliage_vao: glwrappers::VertexArray,
+    foliage_vbo: glwrappers::Buffer,
+    foliage_vertex_count: u32,
     position: ChunkPosition,
     block_registry: &'a BlockRegistry,
     modified: bool,
+    front: Option<Rc<RefCell<Chunk<'a>>>>,
+    back: Option<Rc<RefCell<Chunk<'a>>>>,
+    left: Option<Rc<RefCell<Chunk<'a>>>>,
+    right: Option<Rc<RefCell<Chunk<'a>>>>,
+    up: Option<Rc<RefCell<Chunk<'a>>>>,
+    down: Option<Rc<RefCell<Chunk<'a>>>>,
 }
 impl<'a> Chunk<'a> {
+    fn set_neighbor_by_face(&mut self, face: &Face, chunk: Option<&Rc<RefCell<Chunk<'a>>>>) {
+        match face {
+            Face::Front => self.front = chunk.map(|e| e.clone()),
+            Face::Back => self.back = chunk.map(|e| e.clone()),
+            Face::Left => self.left = chunk.map(|e| e.clone()),
+            Face::Right => self.right = chunk.map(|e| e.clone()),
+            Face::Up => self.up = chunk.map(|e| e.clone()),
+            Face::Down => self.down = chunk.map(|e| e.clone()),
+        }
+    }
     pub fn new(
         position: ChunkPosition,
         block_registry: &'a BlockRegistry,
@@ -370,6 +402,45 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
         }
+        let foliage_vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
+        foliage_vao.bind();
+        let foliage_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
+            .expect("couldnt create vbo for chunk");
+        foliage_vbo.bind();
+        unsafe {
+            ogl33::glVertexAttribPointer(
+                0,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                0 as *const _,
+            );
+            ogl33::glVertexAttribPointer(
+                1,
+                2,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                12 as *const _,
+            );
+            ogl33::glVertexAttribIPointer(
+                2,
+                1,
+                ogl33::GL_BYTE,
+                std::mem::size_of::<glwrappers::Vertex>()
+                    .try_into()
+                    .unwrap(),
+                20 as *const _,
+            );
+            ogl33::glEnableVertexAttribArray(2);
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glEnableVertexAttribArray(0);
+        }
         Chunk {
             blocks,
             vao,
@@ -381,6 +452,15 @@ impl<'a> Chunk<'a> {
             transparent_vbo,
             transparent_vao,
             transparent_vertex_count: 0,
+            foliage_vbo,
+            foliage_vao,
+            foliage_vertex_count: 0,
+            front: None,
+            back: None,
+            left: None,
+            right: None,
+            up: None,
+            down: None,
         }
     }
     pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32) {
@@ -393,17 +473,26 @@ impl<'a> Chunk<'a> {
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
         return self.blocks[x as usize][y as usize][z as usize];
     }
-    fn rebuild_chunk_mesh(
-        &mut self,
-        front_chunk: Ref<Chunk>,
-        back_chunk: Ref<Chunk>,
-        left_chunk: Ref<Chunk>,
-        right_chunk: Ref<Chunk>,
-        up_chunk: Ref<Chunk>,
-        down_chunk: Ref<Chunk>,
-    ) {
+    fn rebuild_chunk_mesh(&mut self) -> bool {
+        if self.front.is_none()
+            || self.back.is_none()
+            || self.left.is_none()
+            || self.right.is_none()
+            || self.up.is_none()
+            || self.down.is_none()
+        {
+            return false;
+        }
+        let front_chunk = self.front.as_deref().unwrap().borrow();
+        let back_chunk = self.back.as_deref().unwrap().borrow();
+        let left_chunk = self.left.as_deref().unwrap().borrow();
+        let right_chunk = self.right.as_deref().unwrap().borrow();
+        let up_chunk = self.up.as_deref().unwrap().borrow();
+        let down_chunk = self.down.as_deref().unwrap().borrow();
+
         let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
         let mut transparent_vertices: Vec<glwrappers::Vertex> = Vec::new();
+        let mut foliage_vertices: Vec<glwrappers::Vertex> = Vec::new();
         for bx in 0..16i32 {
             let x = bx as f32;
             for by in 0..16i32 {
@@ -550,9 +639,12 @@ impl<'a> Chunk<'a> {
                             _,
                             _,
                             connections,
+                            foliage,
                         ) => {
                             let vertices = if *transparent {
                                 &mut transparent_vertices
+                            } else if *foliage {
+                                &mut foliage_vertices
                             } else {
                                 &mut vertices
                             };
@@ -641,50 +733,45 @@ impl<'a> Chunk<'a> {
             bytemuck::cast_slice(&transparent_vertices),
             ogl33::GL_STATIC_DRAW,
         );
+        self.foliage_vertex_count = foliage_vertices.len() as u32;
+        self.foliage_vbo.upload_data(
+            bytemuck::cast_slice(&foliage_vertices),
+            ogl33::GL_STATIC_DRAW,
+        );
+        return true;
     }
-    pub fn render(
-        &mut self,
-        shader: &glwrappers::Shader,
-        front: Ref<Chunk>,
-        back: Ref<Chunk>,
-        left: Ref<Chunk>,
-        right: Ref<Chunk>,
-        up: Ref<Chunk>,
-        down: Ref<Chunk>,
-    ) {
+    pub fn render(&mut self, shader: &glwrappers::Shader, render_foliage: bool) {
         if self.modified {
-            self.rebuild_chunk_mesh(front, back, left, right, up, down);
-            self.modified = false;
+            self.modified = !self.rebuild_chunk_mesh();
         }
-        if self.vertex_count != 0 {
-            shader.set_uniform_matrix(
-                shader
-                    .get_uniform_location("model\0")
-                    .expect("uniform model not found"),
-                Mat4::from_translation(Vec3 {
-                    x: (self.position.x * 16) as f32,
-                    y: (self.position.y * 16) as f32,
-                    z: (self.position.z * 16) as f32,
-                }),
-            );
-            /*shader.set_uniform_vec3(
-                shader
-                    .get_uniform_location("chunk_pos\0")
-                    .expect("uniform chunk_pos not found"),
-                (
-                    self.position.x * 16,
-                    self.position.y * 16,
-                    self.position.z * 16,
-                ),
-            );*/
-            self.vao.bind();
-            unsafe {
-                ogl33::glDisable(ogl33::GL_BLEND);
-                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+        if !self.modified {
+            if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
+                shader.set_uniform_matrix(
+                    shader
+                        .get_uniform_location("model\0")
+                        .expect("uniform model not found"),
+                    Mat4::from_translation(Vec3 {
+                        x: (self.position.x * 16) as f32,
+                        y: (self.position.y * 16) as f32,
+                        z: (self.position.z * 16) as f32,
+                    }),
+                );
+            }
+            if self.vertex_count != 0 {
+                self.vao.bind();
+                unsafe {
+                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+                }
+            }
+            if self.foliage_vertex_count != 0 && render_foliage {
+                self.foliage_vao.bind();
+                unsafe {
+                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
+                }
             }
         }
     }
-    pub fn render_transparent(&mut self, shader: &glwrappers::Shader) {
+    pub fn render_transparent(&self, shader: &glwrappers::Shader) {
         if self.transparent_vertex_count != 0 {
             shader.set_uniform_matrix(
                 shader
@@ -696,18 +783,9 @@ impl<'a> Chunk<'a> {
                     z: (self.position.z * 16) as f32,
                 }),
             );
-            /*shader.set_uniform_vec3(
-                shader
-                    .get_uniform_location("chunk_pos\0")
-                    .expect("uniform chunk_pos not found"),
-                (self.position.x, self.position.y, self.position.z),
-            );*/
             self.transparent_vao.bind();
             unsafe {
-                ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
-                ogl33::glEnable(ogl33::GL_BLEND);
                 ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
-                ogl33::glDisable(ogl33::GL_BLEND);
             }
         }
     }
@@ -765,6 +843,7 @@ pub enum BlockRenderType {
         bool,
         bool,
         StaticBlockModelConnections,
+        bool,
     ),
 }
 #[derive(Clone)]
@@ -787,7 +866,7 @@ impl Block {
         match self.render_type {
             BlockRenderType::Air => false,
             BlockRenderType::Cube(_, _, _, _, _, _, _) => true,
-            BlockRenderType::StaticModel(_, _, north, south, right, left, up, down, _) => {
+            BlockRenderType::StaticModel(_, _, north, south, right, left, up, down, _, _) => {
                 match face {
                     Face::Front => north,
                     Face::Back => south,
@@ -803,18 +882,18 @@ impl Block {
         match self.render_type {
             BlockRenderType::Air => false,
             BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
-            BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _) => transparent,
+            BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _, _) => transparent,
         }
     }
 }
 #[derive(Clone)]
 pub struct BlockRegistry {
-    pub blocks: HashMap<u32, Block>,
+    pub blocks: Vec<Block>,
 }
 impl BlockRegistry {
     #[inline(always)]
     pub fn get_block(&self, id: u32) -> &Block {
-        &self.blocks[&id]
+        &self.blocks[id as usize]
     }
 }
 #[derive(Clone, Copy, Debug)]
@@ -850,14 +929,14 @@ impl AtlassedTexture {
 }
 
 pub struct World<'a> {
-    chunks: std::collections::HashMap<ChunkPosition, RefCell<Chunk<'a>>>,
+    chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
     pub blocks_with_items: HashMap<BlockPosition, HashMap<u32, (f32, f32, f32, u32)>>,
     block_registry: &'a BlockRegistry,
 }
 impl<'a> World<'a> {
     pub fn new(block_registry: &'a BlockRegistry) -> Self {
         World {
-            chunks: std::collections::HashMap::new(),
+            chunks: FxHashMap::default(),
             block_registry,
             blocks_with_items: HashMap::new(),
         }
@@ -868,19 +947,46 @@ impl<'a> World<'a> {
         blocks: [[[u32; 16]; 16]; 16],
     ) -> RefMut<'_, Chunk<'a>> {
         if !self.chunks.contains_key(&position) {
-            self.chunks.insert(
+            let chunk = Rc::new(RefCell::new(Chunk::new(
                 position,
-                RefCell::new(Chunk::new(position, self.block_registry, blocks)),
-            );
+                self.block_registry,
+                blocks,
+            )));
+            self.chunks.insert(position, chunk.clone());
+            for face in Face::all() {
+                let offset = face.get_offset();
+                let neighbor = self.chunks.get(&position.add(offset.x, offset.y, offset.z));
+                {
+                    chunk.borrow_mut().set_neighbor_by_face(&face, neighbor);
+                }
+                {
+                    if let Some(neighbor) = neighbor {
+                        neighbor
+                            .borrow_mut()
+                            .set_neighbor_by_face(&face.opposite(), Some(&chunk));
+                    }
+                }
+            }
         }
         self.chunks.get_mut(&position).unwrap().borrow_mut()
     }
     pub fn unload_chunk(&mut self, position: ChunkPosition) {
+        for face in Face::all() {
+            let offset = face.get_offset();
+            let neighbor = self.chunks.get(&position.add(offset.x, offset.y, offset.z));
+            {
+                if let Some(neighbor) = neighbor {
+                    neighbor
+                        .borrow_mut()
+                        .set_neighbor_by_face(&face.opposite(), None);
+                }
+            }
+        }
         self.chunks.remove(&position);
         self.blocks_with_items
             .drain_filter(|pos, _| pos.to_chunk_pos() == position);
     }
-    pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk>> {
+    pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk<'a>>> {
         match self.chunks.get(&position) {
             Some(chunk) => Some(chunk.borrow()),
             None => None,
@@ -940,61 +1046,37 @@ impl<'a> World<'a> {
                 Some(chunk.get_block(offset.0, offset.1, offset.2))
             })
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader, time: f32) {
+    pub fn render(
+        &mut self,
+        shader: &glwrappers::Shader,
+        time: f32,
+        player_position: ChunkPosition,
+    ) {
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
         let mut rendered_chunks = Vec::new();
         for chunk in self.chunks.values() {
             let pos = { chunk.borrow().position.clone() };
-            let front = self
-                .chunks
-                .get(&pos.add(0, 0, -1))
-                .map(|chunk| chunk.borrow());
-            let back = self
-                .chunks
-                .get(&pos.add(0, 0, 1))
-                .map(|chunk| chunk.borrow());
-            let left = self
-                .chunks
-                .get(&pos.add(-1, 0, 0))
-                .map(|chunk| chunk.borrow());
-            let right = self
-                .chunks
-                .get(&pos.add(1, 0, 0))
-                .map(|chunk| chunk.borrow());
-            let up = self
-                .chunks
-                .get(&pos.add(0, 1, 0))
-                .map(|chunk| chunk.borrow());
-            let down = self
-                .chunks
-                .get(&pos.add(0, -1, 0))
-                .map(|chunk| chunk.borrow());
-            if front.is_some()
-                && back.is_some()
-                && left.is_some()
-                && right.is_some()
-                && up.is_some()
-                && down.is_some()
-            {
-                chunk.borrow_mut().render(
-                    shader,
-                    front.unwrap(),
-                    back.unwrap(),
-                    left.unwrap(),
-                    right.unwrap(),
-                    up.unwrap(),
-                    down.unwrap(),
-                );
-                rendered_chunks.push(chunk);
-            }
+            chunk
+                .borrow_mut()
+                .render(shader, player_position.distance_squared(&pos) < 64);
+            rendered_chunks.push(chunk);
         }
         /*rendered_chunks.sort_by(|a, b| {
             let a = a.borrow();
             let b = b.borrow();
-            let a_dist = (a.position.x-)
+            a.position
+                .distance_squared(&player_position)
+                .cmp(&b.position.distance_squared(&player_position))
         });*/
+        unsafe {
+            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+            ogl33::glEnable(ogl33::GL_BLEND);
+        }
         for chunk in rendered_chunks {
-            chunk.borrow_mut().render_transparent(shader);
+            chunk.borrow().render_transparent(shader);
+        }
+        unsafe {
+            ogl33::glDisable(ogl33::GL_BLEND);
         }
     }
 }
