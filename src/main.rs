@@ -1853,6 +1853,7 @@ impl BlockBreakingManager {
         if (!self.key_down) && held {
             self.just_pressed = true;
         }
+        self.time_requested = false;
         self.key_down = held;
         if !held {
             self.breaking_animation = None;
@@ -1864,6 +1865,7 @@ impl BlockBreakingManager {
             _ => true,
         } {
             self.breaking_animation = None;
+            self.time_requested = false;
         }
         self.target_block = block;
     }
