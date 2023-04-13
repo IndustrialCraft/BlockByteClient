@@ -721,6 +721,104 @@ impl<'a> Chunk<'a> {
                                 },
                             );
                         }
+                        BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
+                            if let Some(texture1) = texture1 {
+                                StaticBlockModel::create_face(
+                                    &mut foliage_vertices,
+                                    Position {
+                                        x: x + 0.01,
+                                        y: y + 0.99,
+                                        z,
+                                    },
+                                    Position {
+                                        x: x + 0.99,
+                                        y: y + 0.99,
+                                        z: z + 0.99,
+                                    },
+                                    Position {
+                                        x: x + 0.99,
+                                        y,
+                                        z: z + 0.99,
+                                    },
+                                    Position { x: x + 0.01, y, z },
+                                    texture1.get_coords(),
+                                    block.render_data,
+                                );
+                            }
+                            if let Some(texture2) = texture2 {
+                                StaticBlockModel::create_face(
+                                    &mut foliage_vertices,
+                                    Position {
+                                        x: x + 0.99,
+                                        y: y + 0.99,
+                                        z,
+                                    },
+                                    Position {
+                                        x: x + 0.01,
+                                        y: y + 0.99,
+                                        z: z + 0.99,
+                                    },
+                                    Position {
+                                        x: x + 0.01,
+                                        y,
+                                        z: z + 1.,
+                                    },
+                                    Position { x: x + 0.99, y, z },
+                                    texture2.get_coords(),
+                                    block.render_data,
+                                );
+                            }
+                            if let Some(texture3) = texture3 {
+                                StaticBlockModel::create_face(
+                                    &mut foliage_vertices,
+                                    Position {
+                                        x: x + 0.5,
+                                        y: y + 0.99,
+                                        z,
+                                    },
+                                    Position {
+                                        x: x + 0.5,
+                                        y: y + 0.99,
+                                        z: z + 0.99,
+                                    },
+                                    Position {
+                                        x: x + 0.5,
+                                        y,
+                                        z: z + 0.99,
+                                    },
+                                    Position { x: x + 0.5, y, z },
+                                    texture3.get_coords(),
+                                    block.render_data,
+                                );
+                            }
+                            if let Some(texture4) = texture4 {
+                                StaticBlockModel::create_face(
+                                    &mut foliage_vertices,
+                                    Position {
+                                        x: x + 0.1,
+                                        y: y + 0.99,
+                                        z: z + 0.5,
+                                    },
+                                    Position {
+                                        x: x + 0.99,
+                                        y: y + 0.99,
+                                        z: z + 0.5,
+                                    },
+                                    Position {
+                                        x: x + 0.99,
+                                        y,
+                                        z: z + 0.5,
+                                    },
+                                    Position {
+                                        x: x + 0.01,
+                                        y,
+                                        z: z + 0.5,
+                                    },
+                                    texture4.get_coords(),
+                                    block.render_data,
+                                );
+                            }
+                        }
                     }
                 }
             }
@@ -845,6 +943,12 @@ pub enum BlockRenderType {
         StaticBlockModelConnections,
         bool,
     ),
+    Foliage(
+        Option<AtlassedTexture>,
+        Option<AtlassedTexture>,
+        Option<AtlassedTexture>,
+        Option<AtlassedTexture>,
+    ),
 }
 #[derive(Clone)]
 pub struct Block {
@@ -876,6 +980,7 @@ impl Block {
                     Face::Down => down,
                 }
             }
+            BlockRenderType::Foliage(_, _, _, _) => false,
         }
     }
     pub fn is_transparent(&self) -> bool {
@@ -883,6 +988,7 @@ impl Block {
             BlockRenderType::Air => false,
             BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
             BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _, _) => transparent,
+            BlockRenderType::Foliage(_, _, _, _) => false,
         }
     }
 }

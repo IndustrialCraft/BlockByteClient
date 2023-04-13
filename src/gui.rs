@@ -525,6 +525,7 @@ impl GUIComponent {
                                         v2: right_texture.1,
                                     });
                                 }
+                                game::BlockRenderType::Foliage(_, _, _, _) => todo!(),
                                 game::BlockRenderType::StaticModel(
                                     _,
                                     _,

@@ -251,6 +251,27 @@ fn main() {
                         no_collision: model["no_collide"].as_bool().unwrap_or(false),
                     };
                 }
+                "foliage" => {
+                    block_registry.blocks[id as usize] = Block {
+                        render_data: model["render_data"].as_u8().unwrap_or(0),
+                        render_type: BlockRenderType::Foliage(
+                            model["texture1"]
+                                .as_str()
+                                .map(|t| texture_atlas.get(t).clone()),
+                            model["texture2"]
+                                .as_str()
+                                .map(|t| texture_atlas.get(t).clone()),
+                            model["texture3"]
+                                .as_str()
+                                .map(|t| texture_atlas.get(t).clone()),
+                            model["texture4"]
+                                .as_str()
+                                .map(|t| texture_atlas.get(t).clone()),
+                        ),
+                        fluid: model["fluid"].as_bool().unwrap_or(false),
+                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                    }
+                }
                 _ => unreachable!(),
             }
         }
@@ -1280,6 +1301,7 @@ impl WorldItemRenderer {
                             vertex_count += 6 * 6;
                         }
                         BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {}
+                        BlockRenderType::Foliage(_, _, _, _) => {}
                     }
                 }
             }
@@ -1354,7 +1376,8 @@ pub fn raycast(
         if let Some(id) = world.get_block(position) {
             match &block_registry.get_block(id).render_type {
                 BlockRenderType::Air => {}
-                BlockRenderType::Cube(_, _, _, _, _, _, _) => {
+                BlockRenderType::Cube(_, _, _, _, _, _, _)
+                | BlockRenderType::Foliage(_, _, _, _) => {
                     let last_pos = last_pos.to_block_pos();
                     let mut least_diff_face = Face::Up;
                     for face in Face::all() {
@@ -1609,7 +1632,10 @@ impl BlockOutline {
                         BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _, _) => {
                             self.upload_static_model(model, 1., 0., 0.);
                         }
-                        _ => {}
+                        BlockRenderType::Foliage(_, _, _, _) => {
+                            self.upload_cube(1., 0., 0.);
+                        }
+                        BlockRenderType::Air => {}
                     }
                     self.last_entity = false;
                     self.last_id = *id;
