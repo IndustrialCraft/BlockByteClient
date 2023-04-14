@@ -226,7 +226,7 @@ pub enum GUIComponent {
         Color,
         Option<(f32, f32, f32, f32)>,
     ),
-    TextComponent(f32, String, Color),
+    TextComponent(f32, String, Color, bool),
     SlotComponent(f32, Option<ItemSlot>, Color, bool),
 }
 impl GUIComponent {
@@ -255,7 +255,12 @@ impl GUIComponent {
                 color,
                 None,
             ),
-            "text" => GUIComponent::TextComponent(1., String::new(), color),
+            "text" => GUIComponent::TextComponent(
+                1.,
+                String::new(),
+                color,
+                json["center"].as_bool().unwrap_or(false),
+            ),
             "slot" => {
                 let json_slot = &json["item"];
                 let item = if json_slot.is_null() {
@@ -308,7 +313,7 @@ impl GUIComponent {
                 }
                 _ => {}
             },
-            Self::TextComponent(scale, text, color) => match data_type {
+            Self::TextComponent(scale, text, color, center) => match data_type {
                 "color" => {
                     let json_color = &json["color"];
                     *color = Color {
@@ -379,7 +384,7 @@ impl GUIComponent {
                     quads.push(GUIQuad::new(x, y, *w, *h, &texture, *color));
                 }
             },
-            Self::TextComponent(scale, text, color) => {
+            Self::TextComponent(scale, text, color, center) => {
                 let mut y_cnt = 0;
                 for text in text.split('\n') {
                     let mut x_cnt = 0;
@@ -391,7 +396,12 @@ impl GUIComponent {
                             let kerning = 0.01f32 * scale;
                             let line_separation = 0.01f32 * scale;
                             let height = 0.07f32 * scale;
-                            let quad_x = x + (i * (width + kerning));
+                            let quad_x = x + (i * (width + kerning))
+                                - if *center {
+                                    (text.len() as f32 / 2.) * (width + kerning)
+                                } else {
+                                    0.
+                                };
                             let quad_y = y - ((y_cnt as f32) * (height + line_separation));
                             quads.push(GUIQuad::new_uv(
                                 quad_x,
@@ -554,6 +564,7 @@ impl GUIComponent {
                                 b: 1.,
                                 a: 1.,
                             },
+                            false,
                         );
                         text.add_quads(
                             quads,
@@ -572,7 +583,7 @@ impl GUIComponent {
     pub fn get_width(&self) -> f32 {
         match self {
             Self::ImageComponent(w, _, _, _, _) => *w,
-            Self::TextComponent(scale, text, _) => text
+            Self::TextComponent(scale, text, _, _) => text
                 .split('\n')
                 .map(|t| (t.len() as f32) * 0.06 * scale)
                 .reduce(f32::max)
@@ -587,7 +598,7 @@ impl GUIComponent {
     pub fn get_height(&self) -> f32 {
         match self {
             Self::ImageComponent(_, h, _, _, _) => *h,
-            Self::TextComponent(scale, text, _) => {
+            Self::TextComponent(scale, text, _, _) => {
                 text.split('\n').count() as f32 * 0.08f32 * scale
             }
             Self::SlotComponent(_, _, _, _) => self.get_width(),
@@ -766,6 +777,7 @@ impl<'a> GUI<'a> {
                                         b: 1.,
                                         a: 1.,
                                     },
+                                    false,
                                 )
                                 .add_quads(
                                     &mut quads,
@@ -791,6 +803,7 @@ impl<'a> GUI<'a> {
                 b: 0.,
                 a: 1.,
             },
+            false,
         )
         .add_quads(
             &mut quads,
