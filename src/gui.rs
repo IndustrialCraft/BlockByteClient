@@ -269,6 +269,19 @@ impl GUIComponent {
                     Some(ItemSlot {
                         item: json_slot["item"].as_u32().unwrap(),
                         count: json_slot["count"].as_u16().unwrap(),
+                        bar: {
+                            let bar_json = &json_slot["bar"];
+                            if bar_json.is_null() {
+                                None
+                            } else {
+                                Some((
+                                    bar_json["progress"].as_f32().unwrap(),
+                                    bar_json["color"][0].as_f32().unwrap(),
+                                    bar_json["color"][1].as_f32().unwrap(),
+                                    bar_json["color"][2].as_f32().unwrap(),
+                                ))
+                            }
+                        },
                     })
                 };
                 GUIComponent::SlotComponent(
@@ -346,6 +359,19 @@ impl GUIComponent {
                         Some(ItemSlot {
                             item: json_slot["item"].as_u32().unwrap(),
                             count: json_slot["count"].as_u16().unwrap(),
+                            bar: {
+                                let bar_json = &json_slot["bar"];
+                                if bar_json.is_null() {
+                                    None
+                                } else {
+                                    Some((
+                                        bar_json["progress"].as_f32().unwrap(),
+                                        bar_json["color"][0].as_f32().unwrap(),
+                                        bar_json["color"][1].as_f32().unwrap(),
+                                        bar_json["color"][2].as_f32().unwrap(),
+                                    ))
+                                }
+                            },
                         })
                     }
                 }
@@ -574,6 +600,29 @@ impl GUIComponent {
                             block_registry,
                             x + size - text.get_width(),
                             y + text.get_height(),
+                        );
+                    }
+                    if let Some((progress, color_r, color_g, color_b)) = slot.bar {
+                        let bar = GUIComponent::ImageComponent(
+                            0.08 * progress,
+                            0.01,
+                            AtlassedTexture::empty(),
+                            Color {
+                                r: color_r,
+                                g: color_g,
+                                b: color_b,
+                                a: 1.,
+                            },
+                            None,
+                        );
+                        bar.add_quads(
+                            quads,
+                            text_renderer,
+                            texture_atlas,
+                            item_renderer,
+                            block_registry,
+                            x + 0.01,
+                            y + 0.01,
                         );
                     }
                 }
@@ -945,4 +994,5 @@ pub struct Color {
 pub struct ItemSlot {
     item: u32,
     count: u16,
+    bar: Option<(f32, f32, f32, f32)>,
 }

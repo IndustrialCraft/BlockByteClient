@@ -1012,6 +1012,16 @@ pub struct AtlassedTexture {
     pub atlas_h: u32,
 }
 impl AtlassedTexture {
+    pub fn empty() -> AtlassedTexture {
+        AtlassedTexture {
+            x: 0,
+            y: 0,
+            w: 0,
+            h: 0,
+            atlas_w: 1,
+            atlas_h: 1,
+        }
+    }
     pub fn get_coords(&self) -> (f32, f32, f32, f32) {
         (
             (self.x as f32) / (self.atlas_w as f32),
