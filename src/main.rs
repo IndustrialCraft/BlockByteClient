@@ -412,6 +412,7 @@ fn main() {
     let mut world_item_renderer = WorldItemRenderer::new();
     let mut sky_renderer = SkyRenderer::new();
     let mut fluid_selectable = false;
+    let mut particle_manager = game::ParticleManager::new();
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -877,19 +878,21 @@ fn main() {
                 &texture_atlas,
                 &block_registry,
             );
-            outline_shader.use_program();
-            let projection_view_loc = outline_shader
-                .get_uniform_location("projection_view\0")
-                .expect("transform uniform not found");
-            outline_shader.set_uniform_matrix(
-                projection_view_loc,
-                ultraviolet::projection::perspective_gl(
+            particle_manager.tick(delta_time, &world, &block_registry);
+            particle_manager.render(
+                &ultraviolet::projection::perspective_gl(
                     90f32.to_radians(),
                     (win_width as f32) / (win_height as f32),
                     0.01,
                     1000.,
-                ) * camera.create_view_matrix(),
+                ),
+                &camera.create_view_matrix(),
             );
+            outline_shader.use_program();
+            let projection_view_loc = outline_shader
+                .get_uniform_location("projection_view\0")
+                .expect("transform uniform not found");
+            outline_shader.set_uniform_matrix(projection_view_loc, projection.clone());
             if let Some(raycast_result) = &raycast_result {
                 ogl33::glDisable(ogl33::GL_DEPTH_TEST);
                 outline_renderer.render(
@@ -910,7 +913,7 @@ fn main() {
                     1000.,
                 ) * camera.create_view_matrix_no_pos(),
                 delta_time,
-            );*/
+            );
             gui.render(&gui_shader, &camera.position, last_fps_cnt, rendered_chunks);
             {
                 window.borrow().gl_swap_window();

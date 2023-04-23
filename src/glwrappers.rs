@@ -159,6 +159,13 @@ impl VertexArray {
         unsafe { ogl33::glBindVertexArray(0) }
     }
 }
+impl Drop for VertexArray {
+    fn drop(&mut self) {
+        unsafe {
+            ogl33::glDeleteVertexArrays(1, &self.vao_id);
+        }
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BufferType {
     Array = ogl33::GL_ARRAY_BUFFER as isize,

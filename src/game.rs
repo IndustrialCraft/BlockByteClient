@@ -1807,3 +1807,137 @@ impl EntityModel {
         vertices.push(v1);
     }
 }
+pub struct ParticleManager {
+    renderer: ParticleRenderer,
+    particles: Vec<Particle>,
+}
+impl ParticleManager {
+    pub fn new() -> Self {
+        let mut particles = Vec::new();
+        for i in 0..10 {
+            particles.push(Particle {
+                position: Position {
+                    x: (i as f32) * 1.5,
+                    y: 5.,
+                    z: 0.,
+                },
+                color: (0., 1., 0.),
+                velocity: (0., -0.3, 0.),
+                gravity: 1.,
+            });
+        }
+        ParticleManager {
+            particles,
+            renderer: ParticleRenderer::new(),
+        }
+    }
+    pub fn render(&mut self, projection: &Mat4, view: &Mat4) {
+        self.renderer.render(&self.particles, projection, view);
+    }
+    pub fn tick(&mut self, delta_time: f32, world: &World, block_registry: &BlockRegistry) {
+        for particle in &mut self.particles {
+            let new_pos = Position {
+                x: particle.position.x + (particle.velocity.0 * delta_time),
+                y: particle.position.y + (particle.velocity.1 * delta_time),
+                z: particle.position.z + (particle.velocity.2 * delta_time),
+            };
+            let no_collide = world
+                .get_block(new_pos.to_block_pos())
+                .map_or(true, |b| block_registry.get_block(b).no_collision);
+            if no_collide {
+                particle.position = new_pos;
+            } else {
+                particle.velocity = (0., 0., 0.);
+            }
+            particle.velocity.1 -= particle.gravity * delta_time;
+        }
+    }
+}
+pub struct ParticleRenderer {
+    shader: glwrappers::Shader,
+    vao: glwrappers::VertexArray,
+    vertex_vbo: glwrappers::Buffer,
+    particle_vbo: glwrappers::Buffer,
+}
+impl ParticleRenderer {
+    pub fn new() -> Self {
+        let shader = glwrappers::Shader::new(
+            include_str!("shaders/particle.vert").to_string(),
+            include_str!("shaders/particle.frag").to_string(),
+        );
+        let vao = glwrappers::VertexArray::new().unwrap();
+        vao.bind();
+        let mut vertex_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array).unwrap();
+        let mut vertices: Vec<[f32; 2]> = Vec::new();
+        vertices.push([0., 0.]);
+        vertices.push([1., 0.]);
+        vertices.push([0., 1.]);
+        vertices.push([1., 1.]);
+        vertex_vbo.upload_data(bytemuck::cast_slice(&vertices), ogl33::GL_STATIC_DRAW);
+        let particle_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array).unwrap();
+        unsafe {
+            vertex_vbo.bind();
+            ogl33::glVertexAttribPointer(0, 2, ogl33::GL_FLOAT, ogl33::GL_FALSE, 8, 0 as *const _);
+            ogl33::glEnableVertexAttribArray(0);
+            particle_vbo.bind();
+            ogl33::glVertexAttribPointer(1, 3, ogl33::GL_FLOAT, ogl33::GL_FALSE, 24, 0 as *const _);
+            ogl33::glVertexAttribDivisor(1, 1);
+            ogl33::glEnableVertexAttribArray(1);
+            ogl33::glVertexAttribPointer(
+                2,
+                3,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                24,
+                12 as *const _,
+            );
+            ogl33::glVertexAttribDivisor(2, 1);
+            ogl33::glEnableVertexAttribArray(2);
+        }
+        VertexArray::unbind();
+        ParticleRenderer {
+            shader,
+            vao,
+            vertex_vbo,
+            particle_vbo,
+        }
+    }
+    pub fn render(&mut self, particles: &Vec<Particle>, projection: &Mat4, view: &Mat4) {
+        let mut data = Vec::new();
+        for particle in particles {
+            data.push([
+                particle.position.x,
+                particle.position.y,
+                particle.position.z,
+                particle.color.0,
+                particle.color.1,
+                particle.color.2,
+            ]);
+        }
+        self.shader.use_program();
+        self.shader.set_uniform_matrix(
+            self.shader.get_uniform_location("projection\0").unwrap(),
+            projection.clone(),
+        );
+        self.shader.set_uniform_matrix(
+            self.shader.get_uniform_location("view\0").unwrap(),
+            view.clone(),
+        );
+        self.vao.bind();
+        self.particle_vbo
+            .upload_data(bytemuck::cast_slice(&data), ogl33::GL_STREAM_DRAW);
+        unsafe {
+            //ogl33::glDisable(ogl33::GL_DEPTH_TEST);
+            //ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, 4);
+            ogl33::glDrawArraysInstanced(ogl33::GL_TRIANGLE_STRIP, 0, 4, particles.len() as i32);
+            //ogl33::glEnable(ogl33::GL_DEPTH_TEST);
+        }
+        VertexArray::unbind();
+    }
+}
+pub struct Particle {
+    position: Position,
+    color: (f32, f32, f32),
+    velocity: (f32, f32, f32),
+    gravity: f32,
+}
