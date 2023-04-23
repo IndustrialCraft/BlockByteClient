@@ -1818,12 +1818,16 @@ impl ParticleManager {
             particles.push(Particle {
                 position: Position {
                     x: (i as f32) * 1.5,
-                    y: 5.,
+                    y: 50.,
                     z: 0.,
                 },
                 color: (0., 1., 0.),
                 velocity: (0., -0.3, 0.),
                 gravity: 1.,
+                lifetime: -10.,
+                blendout_lifetime: 7.,
+                destroy_on_collision: true,
+                destroyed: false,
             });
         }
         ParticleManager {
@@ -1847,10 +1851,25 @@ impl ParticleManager {
             if no_collide {
                 particle.position = new_pos;
             } else {
+                if particle.destroy_on_collision {
+                    if particle.lifetime < 0. {
+                        particle.lifetime *= -1.;
+                        particle.destroy_on_collision = false;
+                    } else {
+                        particle.destroyed = true;
+                    }
+                }
                 particle.velocity = (0., 0., 0.);
             }
             particle.velocity.1 -= particle.gravity * delta_time;
+            if particle.lifetime > 0. {
+                particle.lifetime -= delta_time;
+                if particle.lifetime <= 0. {
+                    particle.destroyed = true;
+                }
+            }
         }
+        self.particles.drain_filter(|p| p.destroyed);
     }
 }
 pub struct ParticleRenderer {
@@ -1880,15 +1899,15 @@ impl ParticleRenderer {
             ogl33::glVertexAttribPointer(0, 2, ogl33::GL_FLOAT, ogl33::GL_FALSE, 8, 0 as *const _);
             ogl33::glEnableVertexAttribArray(0);
             particle_vbo.bind();
-            ogl33::glVertexAttribPointer(1, 3, ogl33::GL_FLOAT, ogl33::GL_FALSE, 24, 0 as *const _);
+            ogl33::glVertexAttribPointer(1, 3, ogl33::GL_FLOAT, ogl33::GL_FALSE, 28, 0 as *const _);
             ogl33::glVertexAttribDivisor(1, 1);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glVertexAttribPointer(
                 2,
-                3,
+                4,
                 ogl33::GL_FLOAT,
                 ogl33::GL_FALSE,
-                24,
+                28,
                 12 as *const _,
             );
             ogl33::glVertexAttribDivisor(2, 1);
@@ -1912,6 +1931,14 @@ impl ParticleRenderer {
                 particle.color.0,
                 particle.color.1,
                 particle.color.2,
+                if particle.lifetime > 0.
+                    && particle.blendout_lifetime > 0.
+                    && particle.lifetime < particle.blendout_lifetime
+                {
+                    particle.lifetime / particle.blendout_lifetime
+                } else {
+                    1.
+                },
             ]);
         }
         self.shader.use_program();
@@ -1929,7 +1956,10 @@ impl ParticleRenderer {
         unsafe {
             //ogl33::glDisable(ogl33::GL_DEPTH_TEST);
             //ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, 4);
+            ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
+            ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDrawArraysInstanced(ogl33::GL_TRIANGLE_STRIP, 0, 4, particles.len() as i32);
+            ogl33::glDisable(ogl33::GL_BLEND);
             //ogl33::glEnable(ogl33::GL_DEPTH_TEST);
         }
         VertexArray::unbind();
@@ -1940,4 +1970,8 @@ pub struct Particle {
     color: (f32, f32, f32),
     velocity: (f32, f32, f32),
     gravity: f32,
+    lifetime: f32,
+    blendout_lifetime: f32,
+    destroy_on_collision: bool,
+    destroyed: bool,
 }
