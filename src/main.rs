@@ -823,7 +823,7 @@ fn main() {
                     1000.,
                 ) * camera.create_view_matrix(),
             );
-            {
+            let rendered_chunks = {
                 world.render(
                     &chunk_shader,
                     (timer.ticks() as f32) / 1000f32,
@@ -833,8 +833,8 @@ fn main() {
                         z: camera.position.z,
                     }
                     .to_chunk_pos(),
-                );
-            }
+                )
+            };
 
             model_shader.use_program();
             let projection_view_loc = model_shader
@@ -910,8 +910,8 @@ fn main() {
                     1000.,
                 ) * camera.create_view_matrix_no_pos(),
                 delta_time,
-            );
-            gui.render(&gui_shader, &camera.position, last_fps_cnt);
+            );*/
+            gui.render(&gui_shader, &camera.position, last_fps_cnt, rendered_chunks);
             {
                 window.borrow().gl_swap_window();
             }

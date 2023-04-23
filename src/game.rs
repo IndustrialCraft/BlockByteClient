@@ -7,7 +7,7 @@ use std::{
 };
 
 use crate::{
-    glwrappers::Vertex,
+    glwrappers::{Vertex, VertexArray},
     util::{self, *},
     TextureAtlas,
 };
@@ -838,7 +838,12 @@ impl<'a> Chunk<'a> {
         );
         return true;
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader, render_foliage: bool) {
+    pub fn render(
+        &mut self,
+        shader: &glwrappers::Shader,
+        render_foliage: bool,
+        rendered_chunks_stat: &mut (i32, i32, i32, i32),
+    ) {
         if self.modified {
             self.modified = !self.rebuild_chunk_mesh();
         }
@@ -856,12 +861,14 @@ impl<'a> Chunk<'a> {
                 );
             }
             if self.vertex_count != 0 {
+                rendered_chunks_stat.0 += 1;
                 self.vao.bind();
                 unsafe {
                     ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
                 }
             }
             if self.foliage_vertex_count != 0 && render_foliage {
+                rendered_chunks_stat.2 += 1;
                 self.foliage_vao.bind();
                 unsafe {
                     ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
@@ -869,8 +876,13 @@ impl<'a> Chunk<'a> {
             }
         }
     }
-    pub fn render_transparent(&self, shader: &glwrappers::Shader) {
+    pub fn render_transparent(
+        &self,
+        shader: &glwrappers::Shader,
+        rendered_chunks_stat: &mut (i32, i32, i32, i32),
+    ) {
         if self.transparent_vertex_count != 0 {
+            rendered_chunks_stat.1 += 1;
             shader.set_uniform_matrix(
                 shader
                     .get_uniform_location("model\0")
@@ -1167,14 +1179,17 @@ impl<'a> World<'a> {
         shader: &glwrappers::Shader,
         time: f32,
         player_position: ChunkPosition,
-    ) {
+    ) -> (i32, i32, i32, i32) {
+        let mut rendered_chunks_stat = (0, 0, 0, self.chunks.len() as i32);
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
         let mut rendered_chunks = Vec::new();
         for chunk in self.chunks.values() {
             let pos = { chunk.borrow().position.clone() };
-            chunk
-                .borrow_mut()
-                .render(shader, player_position.distance_squared(&pos) < 64);
+            chunk.borrow_mut().render(
+                shader,
+                player_position.distance_squared(&pos) < 64,
+                &mut rendered_chunks_stat,
+            );
             rendered_chunks.push(chunk);
         }
         /*rendered_chunks.sort_by(|a, b| {
@@ -1189,11 +1204,14 @@ impl<'a> World<'a> {
             ogl33::glEnable(ogl33::GL_BLEND);
         }
         for chunk in rendered_chunks {
-            chunk.borrow().render_transparent(shader);
+            chunk
+                .borrow()
+                .render_transparent(shader, &mut rendered_chunks_stat);
         }
         unsafe {
             ogl33::glDisable(ogl33::GL_BLEND);
         }
+        rendered_chunks_stat
     }
 }
 pub struct Entity {

@@ -782,7 +782,14 @@ impl<'a> GUI<'a> {
             _ => {}
         }
     }
-    fn to_quad_list(&self, x: f32, y: f32, z: f32, fps: u32) -> Vec<GUIQuad> {
+    fn to_quad_list(
+        &self,
+        x: f32,
+        y: f32,
+        z: f32,
+        fps: u32,
+        rendered_chunks: (i32, i32, i32, i32),
+    ) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
         let mut elements: Vec<&GUIElement> = self.elements.values().collect();
         elements.sort_by(|a, b| a.z.cmp(&b.z));
@@ -844,8 +851,18 @@ impl<'a> GUI<'a> {
             }
         }
         GUIComponent::TextComponent(
-            1.,
-            format!("x:{:.2} y:{:.2} z:{:.2} fps: {}", x, y, z, fps),
+            0.5,
+            format!(
+                "x:{:.2} y:{:.2} z:{:.2} fps:{} s:{} t:{} f:{} a:{}",
+                x,
+                y,
+                z,
+                fps,
+                rendered_chunks.0,
+                rendered_chunks.1,
+                rendered_chunks.2,
+                rendered_chunks.3
+            ),
             Color {
                 r: 0.,
                 g: 0.,
@@ -860,8 +877,8 @@ impl<'a> GUI<'a> {
             &self.texture_atlas,
             &self.item_renderer,
             &self.block_registry,
-            -1.1,
-            0.4,
+            -1.18,
+            0.6,
         );
         quads
     }
@@ -940,10 +957,22 @@ impl<'a> GUI<'a> {
         }
         !self.mouse_locked
     }
-    pub fn render(&mut self, shader: &glwrappers::Shader, player_pos: &Vec3, fps: u32) {
+    pub fn render(
+        &mut self,
+        shader: &glwrappers::Shader,
+        player_pos: &Vec3,
+        fps: u32,
+        rendered_chunks: (i32, i32, i32, i32),
+    ) {
         self.renderer.render(
             shader,
-            self.to_quad_list(player_pos.x, player_pos.y, player_pos.z, fps),
+            self.to_quad_list(
+                player_pos.x,
+                player_pos.y,
+                player_pos.z,
+                fps,
+                rendered_chunks,
+            ),
             (self.size.1 as f32 / self.size.0 as f32) * self.gui_scale,
             self.gui_scale,
         );
