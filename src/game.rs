@@ -1145,7 +1145,7 @@ impl<'a> World<'a> {
             }
         }
         if offset.1 == 15 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 15, 0)) {
+            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 1, 0)) {
                 chunk.schedule_mesh_rebuild();
             }
         }
