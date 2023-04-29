@@ -7,6 +7,7 @@ pub struct Vertex {
     pub u: f32,
     pub v: f32,
     pub render_data: u8,
+    pub light: u16,
 }
 #[repr(C, packed)]
 #[derive(Clone, Copy)]

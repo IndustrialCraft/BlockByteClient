@@ -788,7 +788,7 @@ impl<'a> GUI<'a> {
         y: f32,
         z: f32,
         fps: u32,
-        rendered_chunks: (i32, i32, i32, i32),
+        rendered_chunks: (i32, i32, i32, i32, i32),
     ) -> Vec<GUIQuad> {
         let mut quads = Vec::new();
         let mut elements: Vec<&GUIElement> = self.elements.values().collect();
@@ -853,7 +853,7 @@ impl<'a> GUI<'a> {
         GUIComponent::TextComponent(
             0.5,
             format!(
-                "x:{:.2} y:{:.2} z:{:.2} fps:{} s:{} t:{} f:{} a:{}",
+                "x:{:.2} y:{:.2} z:{:.2} fps:{} s:{} t:{} f:{} a:{} l:{}",
                 x,
                 y,
                 z,
@@ -861,7 +861,8 @@ impl<'a> GUI<'a> {
                 rendered_chunks.0,
                 rendered_chunks.1,
                 rendered_chunks.2,
-                rendered_chunks.3
+                rendered_chunks.3,
+                rendered_chunks.4
             ),
             Color {
                 r: 0.,
@@ -962,7 +963,7 @@ impl<'a> GUI<'a> {
         shader: &glwrappers::Shader,
         player_pos: &Vec3,
         fps: u32,
-        rendered_chunks: (i32, i32, i32, i32),
+        rendered_chunks: (i32, i32, i32, i32, i32),
     ) {
         self.renderer.render(
             shader,

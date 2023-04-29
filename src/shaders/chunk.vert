@@ -6,10 +6,12 @@ uniform float time;
 layout (location = 0) in vec3 pos;
 layout (location = 1) in vec2 tex;
 layout (location = 2) in int render_data;
+layout (location = 3) in int light;
 
 #define PI 3.14159265359
 
 out vec2 frag_tex;
+flat out int frag_light;
 void main() {
   vec3 position = pos;
   if(render_data == 1)
@@ -25,4 +27,5 @@ void main() {
   }
   gl_Position = projection_view * model * vec4(position, 1.0);
   frag_tex = tex;
+  frag_light = light;
 }

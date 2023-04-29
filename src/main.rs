@@ -4,7 +4,8 @@
     int_roundings,
     result_option_inspect,
     fn_traits,
-    drain_filter
+    drain_filter,
+    let_chains
 )]
 mod game;
 mod glwrappers;
@@ -139,6 +140,18 @@ fn main() {
                         ),
                         fluid: model["fluid"].as_bool().unwrap_or(false),
                         no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                        light: {
+                            let light = &model["light"];
+                            if !light.is_null() {
+                                (
+                                    light[0].as_u8().unwrap().min(15),
+                                    light[1].as_u8().unwrap().min(15),
+                                    light[2].as_u8().unwrap().min(15),
+                                )
+                            } else {
+                                (0, 0, 0)
+                            }
+                        },
                     };
                 }
                 "static" => {
@@ -255,6 +268,18 @@ fn main() {
                         ),
                         fluid: model["fluid"].as_bool().unwrap_or(false),
                         no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                        light: {
+                            let light = &model["light"];
+                            if !light.is_null() {
+                                (
+                                    light[0].as_u8().unwrap().min(15),
+                                    light[1].as_u8().unwrap().min(15),
+                                    light[2].as_u8().unwrap().min(15),
+                                )
+                            } else {
+                                (0, 0, 0)
+                            }
+                        },
                     };
                 }
                 "foliage" => {
@@ -276,6 +301,18 @@ fn main() {
                         ),
                         fluid: model["fluid"].as_bool().unwrap_or(false),
                         no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                        light: {
+                            let light = &model["light"];
+                            if !light.is_null() {
+                                (
+                                    light[0].as_u8().unwrap().min(15),
+                                    light[1].as_u8().unwrap().min(15),
+                                    light[2].as_u8().unwrap().min(15),
+                                )
+                            } else {
+                                (0, 0, 0)
+                            }
+                        },
                     }
                 }
                 _ => unreachable!(),
