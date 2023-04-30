@@ -33,6 +33,7 @@ use game::BlockRegistry;
 use game::BlockRenderType;
 use game::Entity;
 use game::EntityModel;
+use game::SoundManager;
 use game::StaticBlockModel;
 use game::StaticBlockModelConnections;
 use glwrappers::Buffer;
@@ -90,6 +91,7 @@ fn main() {
         ogl33::glClearColor(0.2, 0.3, 0.3, 1.0);
         ogl33::glViewport(0, 0, win_width as i32, win_height as i32)
     }
+    let mut sound_manager = SoundManager::new();
     let mut assets = std::path::Path::new(args.next().unwrap().as_str()).to_path_buf();
     assets.push("icon.png");
     {
@@ -108,6 +110,12 @@ fn main() {
                     name.to_str().unwrap().replace(".png", ""),
                     asset.path().to_path_buf(),
                 ));
+            }
+            if name.to_str().unwrap().ends_with(".wav") {
+                sound_manager.load(
+                    name.to_str().unwrap().replace(".wav", ""),
+                    asset.path().as_path(),
+                );
             }
         }
         pack_textures(textures_to_pack)
@@ -576,6 +584,15 @@ fn main() {
                             NetworkMessageS2C::FluidSelectable(selectable) => {
                                 fluid_selectable = selectable;
                             }
+                            NetworkMessageS2C::PlaySound(id, x, y, z, gain, pitch, relative) => {
+                                sound_manager.play_sound(
+                                    id,
+                                    Position { x, y, z },
+                                    gain,
+                                    pitch,
+                                    relative,
+                                );
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {
@@ -829,6 +846,7 @@ fn main() {
 
             block_breaking_manager.tick(delta_time, &mut socket, keys_held.contains(&Keycode::R));
             camera.update_position(&keys_held, delta_time, &world);
+            sound_manager.tick(camera.position, camera.make_front());
             {
                 window
                     .borrow_mut()

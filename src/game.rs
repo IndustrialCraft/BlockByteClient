@@ -4,8 +4,9 @@ use std::{
     hash::Hash,
     ops::AddAssign,
     os,
+    path::Path,
     rc::Rc,
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 use crate::{
@@ -13,6 +14,7 @@ use crate::{
     util::{self, *},
     TextureAtlas,
 };
+use alto::{Alto, OutputDevice, Source};
 use hashbrown::HashSet;
 use json::JsonValue;
 use rustc_hash::FxHashMap;
@@ -2268,4 +2270,73 @@ pub struct Particle {
     blendout_lifetime: f32,
     destroy_on_collision: bool,
     destroyed: bool,
+}
+
+pub struct SoundManager {
+    alto: Alto,
+    device: alto::OutputDevice,
+    context: alto::Context,
+    buffers: HashMap<String, Arc<alto::Buffer>>,
+    sounds: Vec<alto::StaticSource>,
+}
+impl SoundManager {
+    pub fn new() -> Self {
+        let alto = Alto::load_default().unwrap();
+        let device = alto.open(None).unwrap();
+        let context = device.new_context(None).unwrap();
+        context.set_distance_model(alto::DistanceModel::InverseClamped); //todo: check what is best
+        SoundManager {
+            alto,
+            device,
+            context,
+            buffers: HashMap::new(),
+            sounds: Vec::new(),
+        }
+    }
+    pub fn load(&mut self, name: String, path: &Path) {
+        let reader = hound::WavReader::open(path).unwrap();
+        let frequency = reader.spec().sample_rate as i32;
+        let samples: Vec<i16> = reader.into_samples().map(|s| s.unwrap()).collect();
+        let buffer = self
+            .context
+            .new_buffer::<alto::Mono<i16>, &[i16]>(samples.as_slice(), frequency)
+            .unwrap();
+        self.buffers.insert(name, Arc::new(buffer));
+    }
+    pub fn play_sound(
+        &mut self,
+        name: String,
+        position: Position,
+        gain: f32,
+        pitch: f32,
+        relative: bool,
+    ) {
+        let mut source = self.context.new_static_source().unwrap();
+        source
+            .set_buffer(self.buffers.get(&name).unwrap().clone())
+            .unwrap();
+        source
+            .set_position([position.x, position.y, position.z])
+            .unwrap();
+        source.set_gain(gain).unwrap();
+        source.set_pitch(pitch).unwrap();
+        source.set_looping(false);
+        source.set_relative(relative);
+        source.play();
+        self.sounds.push(source);
+    }
+    pub fn tick(&mut self, position: Vec3, forward: Vec3) {
+        self.context
+            .set_position([position.x, position.y, position.z])
+            .unwrap();
+        self.context
+            .set_orientation((
+                [ClientPlayer::UP.x, ClientPlayer::UP.y, ClientPlayer::UP.z],
+                [-forward.x, -forward.y, -forward.z],
+            ))
+            .unwrap();
+        //todo: set velocity
+        self.sounds
+            .drain_filter(|source| source.state() != alto::SourceState::Playing);
+    }
 }

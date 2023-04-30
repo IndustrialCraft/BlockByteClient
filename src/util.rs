@@ -40,6 +40,7 @@ pub enum NetworkMessageS2C {
     BlockMoveItem(i32, i32, i32, f32, f32, f32, u32) = 11,
     Knockback(f32, f32, f32, bool) = 12,
     FluidSelectable(bool) = 13,
+    PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -145,6 +146,15 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             13 => Some(Self::FluidSelectable(data.read_be().unwrap())),
+            14 => Some(Self::PlaySound(
+                read_string(&mut data),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                data.read_be().unwrap(),
+            )),
             _ => None,
         }
     }
