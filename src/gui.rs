@@ -7,6 +7,7 @@ use std::{
 };
 
 use json::JsonValue;
+use rusttype::Scale;
 use tungstenite::WebSocket;
 use ultraviolet::Vec3;
 
@@ -411,37 +412,7 @@ impl GUIComponent {
                 }
             },
             Self::TextComponent(scale, text, color, center) => {
-                let mut y_cnt = 0;
-                for text in text.split('\n') {
-                    let mut x_cnt = 0;
-                    for ch in text.bytes() {
-                        if ch != (' ' as u8) {
-                            let i = x_cnt as f32;
-                            let coords = text_renderer.resolve_char(ch);
-                            let width = 0.05f32 * scale;
-                            let kerning = 0.01f32 * scale;
-                            let line_separation = 0.01f32 * scale;
-                            let height = 0.07f32 * scale;
-                            let quad_x = x + (i * (width + kerning))
-                                - if *center {
-                                    (text.len() as f32 / 2.) * (width + kerning)
-                                } else {
-                                    0.
-                                };
-                            let quad_y = y - ((y_cnt as f32) * (height + line_separation));
-                            quads.push(GUIQuad::new_uv(
-                                quad_x,
-                                quad_y,
-                                width,
-                                height,
-                                (coords.0, coords.1, coords.2, coords.3),
-                                *color,
-                            ));
-                        }
-                        x_cnt += 1;
-                    }
-                    y_cnt += 1;
-                }
+                text_renderer.render(x, y, *scale, text, color, quads);
             }
             Self::SlotComponent(size, item, color, background) => {
                 let size = size * 0.1;
@@ -656,7 +627,7 @@ impl GUIComponent {
 }
 pub struct GUI<'a> {
     renderer: GUIRenderer,
-    font_renderer: TextRenderer,
+    font_renderer: TextRenderer<'a>,
     item_renderer: &'a HashMap<u32, ItemRenderData>,
     slots: Vec<Option<ItemSlot>>,
     texture_atlas: TextureAtlas,
@@ -671,7 +642,7 @@ pub struct GUI<'a> {
 }
 impl<'a> GUI<'a> {
     pub fn new(
-        text_renderer: TextRenderer,
+        text_renderer: TextRenderer<'a>,
         item_renderer: &'a HashMap<u32, ItemRenderData>,
         texture_atlas: TextureAtlas,
         sdl: &'a sdl2::Sdl,
@@ -979,29 +950,39 @@ impl<'a> GUI<'a> {
         );
     }
 }
-pub struct TextRenderer {
-    pub texture: game::AtlassedTexture,
+pub struct TextRenderer<'a> {
+    pub font: rusttype::Font<'a>,
+    pub texture_atlas: &'a TextureAtlas,
 }
-impl TextRenderer {
-    pub fn resolve_char(&self, ch: u8) -> (f32, f32, f32, f32) {
-        let ch = ch.to_ascii_uppercase();
-        let index = if ch.is_ascii_uppercase() {
-            ch - ('A' as u8)
-        } else if ch.is_ascii_digit() {
-            ch - ('0' as u8) + 27
-        } else if ch == ':' as u8 {
-            37
-        } else if ch == '.' as u8 {
-            38
-        } else if ch == '-' as u8 {
-            39
-        } else {
-            26
-        };
-        let index = index as f32;
-        let uv1 = self.texture.map((index * 5f32, 0f32));
-        let uv2 = self.texture.map(((index + 1f32) * 5f32, 7f32));
-        (uv1.0, uv1.1, uv2.0, uv2.1)
+impl<'a> TextRenderer<'a> {
+    pub fn render(
+        &self,
+        x: f32,
+        y: f32,
+        size: f32,
+        text: &String,
+        color: &Color,
+        quads: &mut Vec<GUIQuad>,
+    ) {
+        let glyphs: Vec<_> = self
+            .font
+            .layout(text, Scale::uniform(0.1 * size), rusttype::Point { x, y })
+            .collect();
+        for glyph in glyphs {
+            if let Some(bb) = glyph.unpositioned().exact_bounding_box() {
+                let texture = self
+                    .texture_atlas
+                    .get(("font_".to_string() + glyph.id().0.to_string().as_str()).as_str());
+                quads.push(GUIQuad::new_uv(
+                    glyph.position().x,
+                    glyph.position().y - bb.max.y,
+                    glyph.unpositioned().h_metrics().advance_width,
+                    -bb.min.y + bb.max.y,
+                    texture.get_coords(),
+                    *color,
+                ));
+            }
+        }
     }
 }
 

@@ -38,12 +38,18 @@ use game::StaticBlockModel;
 use game::StaticBlockModelConnections;
 use glwrappers::Buffer;
 use glwrappers::VertexArray;
+use image::DynamicImage;
 use image::EncodableLayout;
+use image::Rgba;
 use image::RgbaImage;
 use json::JsonValue;
 use ogl33::c_char;
 use ogl33::c_void;
 use rustc_hash::FxHashMap;
+use rusttype::Glyph;
+use rusttype::GlyphId;
+use rusttype::Point;
+use rusttype::Scale;
 use sdl2::image::LoadSurface;
 use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
@@ -100,7 +106,7 @@ fn main() {
             .set_icon(Surface::from_file(assets.as_os_str()).unwrap());
     }
     assets.pop();
-    let (texture_atlas, packed_texture) = {
+    let (texture_atlas, packed_texture, font) = {
         let mut textures_to_pack = Vec::new();
         for asset in std::fs::read_dir(&assets).unwrap() {
             let asset = asset.unwrap();
@@ -118,7 +124,9 @@ fn main() {
                 );
             }
         }
-        pack_textures(textures_to_pack)
+        let font = rusttype::Font::try_from_bytes(include_bytes!("../assets/font.ttf")).unwrap();
+        let ret = pack_textures(textures_to_pack, &font);
+        (ret.0, ret.1, font)
     };
     let (block_registry, entity_registry, item_registry) = {
         assets.push("content.json");
@@ -435,7 +443,8 @@ fn main() {
     let timer = sdl.timer().unwrap();
     let mut gui = gui::GUI::new(
         gui::TextRenderer {
-            texture: texture_atlas.get("font").clone(),
+            font,
+            texture_atlas: &texture_atlas,
         },
         &item_registry,
         texture_atlas.clone(),
@@ -1119,12 +1128,15 @@ impl SkyRenderer {
         }
     }
 }
-fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, RgbaImage) {
+fn pack_textures(
+    textures: Vec<(String, std::path::PathBuf)>,
+    font: &rusttype::Font,
+) -> (TextureAtlas, RgbaImage) {
     let mut texture_map = std::collections::HashMap::new();
     let mut packer =
         texture_packer::TexturePacker::new_skyline(texture_packer::TexturePackerConfig {
-            max_width: 512,
-            max_height: 512,
+            max_width: 2048,
+            max_height: 2048,
             allow_rotation: false,
             texture_outlines: false,
             border_padding: 0,
@@ -1135,6 +1147,32 @@ fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, 
     for (name, path) in textures {
         if let Ok(texture) = ImageImporter::import_from_file(path.as_path()) {
             packer.pack_own(name, texture).unwrap();
+        }
+    }
+    {
+        let glyphs: Vec<_> = (0..font.glyph_count())
+            .map(|i| {
+                font.glyph(GlyphId { 0: i as u16 })
+                    .scaled(Scale::uniform(30.))
+                    .positioned(Point { x: 0., y: 0. })
+            })
+            .collect();
+        for g in glyphs.iter().enumerate() {
+            if let Some(bb) = g.1.pixel_bounding_box() {
+                let mut font_texture =
+                    DynamicImage::new_rgba8(bb.width() as u32, bb.height() as u32);
+                let font_buffer = match &mut font_texture {
+                    DynamicImage::ImageRgba8(buffer) => buffer,
+                    _ => panic!(),
+                };
+                g.1.draw(|x, y, v| {
+                    font_buffer.put_pixel(x, y, Rgba([0, 0, 0, (v * 255f32) as u8]));
+                    //font_buffer.put_pixel(x, y, Rgba([(v * 255f32) as u8, 0, 0, 255]));
+                });
+                packer
+                    .pack_own("font_".to_string() + g.0.to_string().as_str(), font_texture)
+                    .unwrap();
+            }
         }
     }
     packer
@@ -1156,6 +1194,7 @@ fn pack_textures(textures: Vec<(String, std::path::PathBuf)>) -> (TextureAtlas, 
         texture_map.insert(name.to_string(), texture);
     }
     let exporter = ImageExporter::export(&packer).unwrap();
+    exporter.save(Path::new("textureatlasdump.png")).unwrap();
     (
         TextureAtlas {
             missing_texture: texture_map.get("missing").unwrap().clone(),
