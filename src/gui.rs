@@ -412,7 +412,7 @@ impl GUIComponent {
                 }
             },
             Self::TextComponent(scale, text, color, center) => {
-                text_renderer.render(x, y, *scale, text, color, quads);
+                text_renderer.render(x, y, *scale, text, color, *center, quads);
             }
             Self::SlotComponent(size, item, color, background) => {
                 let size = size * 0.1;
@@ -962,20 +962,30 @@ impl<'a> TextRenderer<'a> {
         size: f32,
         text: &String,
         color: &Color,
+        center: bool,
         quads: &mut Vec<GUIQuad>,
     ) {
-        let glyphs: Vec<_> = self
-            .font
-            .layout(text, Scale::uniform(0.1 * size), rusttype::Point { x, y })
-            .collect();
+        let layout = self.font.layout(
+            text,
+            Scale::uniform(0.1 * size),
+            rusttype::Point { x: 0., y: 0. },
+        );
+        let glyphs: Vec<_> = layout.collect();
+        let center_offset_x = if center {
+            glyphs
+                .get(glyphs.len() - 1)
+                .map(|g| (g.position().x + g.unpositioned().h_metrics().advance_width) / 2.)
+        } else {
+            Some(0.)
+        };
         for glyph in glyphs {
             if let Some(bb) = glyph.unpositioned().exact_bounding_box() {
                 let texture = self
                     .texture_atlas
                     .get(("font_".to_string() + glyph.id().0.to_string().as_str()).as_str());
                 quads.push(GUIQuad::new_uv(
-                    glyph.position().x,
-                    glyph.position().y - bb.max.y,
+                    glyph.position().x + x - center_offset_x.unwrap(),
+                    glyph.position().y - bb.max.y + y,
                     glyph.unpositioned().h_metrics().advance_width,
                     -bb.min.y + bb.max.y,
                     texture.get_coords(),
