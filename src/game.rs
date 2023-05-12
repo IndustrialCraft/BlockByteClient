@@ -496,7 +496,7 @@ impl<'a> Chunk<'a> {
         }
         Chunk {
             blocks,
-            light: [[[0; 16]; 16]; 16],
+            light: [[[15 << 12; 16]; 16]; 16],
             vao,
             vbo,
             vertex_count: 0,
@@ -1413,6 +1413,7 @@ impl<'a> World<'a> {
         self.get_chunk(position).is_some()
     }
     pub fn update_lights(&mut self) -> u32 {
+        self.light_updates.clear();
         let updates = self.light_updates.len() as u32;
         while let Some(light_update) = self.light_updates.pop_last() {
             if self.get_block(light_update).map_or(false, |b| {

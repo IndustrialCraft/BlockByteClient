@@ -7,7 +7,8 @@ void main() {
   final_color = texture(frag_texture, frag_tex);
   if(final_color[3] == 0)
     discard;
-  final_color.x *= float((frag_light&15))/16.0f;
-  final_color.y *= float(((frag_light>>4)&15))/16.0f;
-  final_color.z *= float(((frag_light>>8)&15))/16.0f;
+  
+  final_color.x *= max(float(frag_light&15), (frag_light>>12)&15)/16.0f;
+  final_color.y *= max(float((frag_light>>4)&15), ((frag_light>>12)&15))/16.0f;
+  final_color.z *= max(float((frag_light>>8)&15), ((frag_light>>12)&15))/16.0f;
 }
