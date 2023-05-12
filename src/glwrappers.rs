@@ -249,7 +249,7 @@ impl Texture {
                 ogl33::glTexParameteri(
                     ogl33::GL_TEXTURE_2D,
                     ogl33::GL_TEXTURE_MIN_FILTER,
-                    ogl33::GL_LINEAR as ogl33::GLint,
+                    ogl33::GL_NEAREST as ogl33::GLint,
                 );
                 ogl33::glTexParameteri(
                     ogl33::GL_TEXTURE_2D,
