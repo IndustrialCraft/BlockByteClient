@@ -10,6 +10,7 @@
 mod game;
 mod glwrappers;
 mod gui;
+mod model;
 mod util;
 
 use std::cell::RefCell;
@@ -37,6 +38,7 @@ use game::SoundManager;
 use game::StaticBlockModel;
 use game::StaticBlockModelConnections;
 use glwrappers::Buffer;
+use glwrappers::Vertex;
 use glwrappers::VertexArray;
 use image::DynamicImage;
 use image::EncodableLayout;
@@ -59,6 +61,7 @@ use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
 use tungstenite::WebSocket;
 use ultraviolet::Mat4;
+use ultraviolet::Vec3;
 use util::*;
 
 use endio::BERead;

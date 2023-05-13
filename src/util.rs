@@ -48,7 +48,7 @@ fn write_string(data: &mut Vec<u8>, value: &String) {
         data.write_be(*ch).unwrap();
     }
 }
-fn read_string(data: &mut &[u8]) -> String {
+pub fn read_string(data: &mut &[u8]) -> String {
     let len: u16 = data.read_be().unwrap();
     let mut str = Vec::new();
     for _ in 0..len {
