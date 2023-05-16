@@ -1481,7 +1481,7 @@ pub fn raycast(
 ) -> Option<HitResult> {
     //TODO: better algorithm
     let mut ray_pos = camera.get_eye().clone();
-    let dir = camera.make_front().normalized() * 0.01;
+    let dir = camera.make_front().normalized() * 0.03;
     let mut last_pos = ray_pos.clone();
     for _ in 0..200 {
         let position = BlockPosition {
