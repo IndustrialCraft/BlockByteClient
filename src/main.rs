@@ -400,23 +400,28 @@ fn main() {
     )
     .unwrap();
     socket.get_mut().set_nonblocking(true).unwrap();
-    let mut drpc: Option<DiscordIpcClient> = {
-        /*let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
-        match drpc.connect() {
-            Ok(_) => Some(drpc),
-            Err(_) => None,
-        }*/
-        None
-    };
-    if let Some(drpc) = &mut drpc {
-        println!("discord rpc started!");
-        drpc.set_activity(
+    let (discord_rpc_thread, discord_rpc_thread_tx) = {
+        let (discord_thread_tx, discord_thread_rx) = std::sync::mpsc::channel();
+        let discord_thread = std::thread::spawn(move || {
+            let mut drpc = DiscordIpcClient::new("1088876238447321128").unwrap();
+            match drpc.connect() {
+                Ok(_) => {
+                    println!("discord rpc started!");
+                    drpc.set_activity(
         Activity::new()
             .state(format!("Connected to {}", addr).as_str())
             .assets(Assets::new().large_image("https://cdn.discordapp.com/app-icons/1088876238447321128/8e9d838b6ccc9010f6e762023127f1c8.png?size=128")).timestamps(Timestamps::new().start(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64)),
     )
     .expect("Failed to set activity");
-    }
+                    discord_thread_rx.recv().unwrap();
+                    drpc.close().unwrap();
+                }
+                Err(_) => {}
+            };
+        });
+        (discord_thread, discord_thread_tx)
+    };
+
     let chunk_shader = glwrappers::Shader::new(
         include_str!("shaders/chunk.vert").to_string(),
         include_str!("shaders/chunk.frag").to_string(),
@@ -995,9 +1000,8 @@ fn main() {
             }
         }
     }
-    if let Some(drpc) = &mut drpc {
-        drpc.close().unwrap();
-    }
+    discord_rpc_thread_tx.send(()).unwrap();
+    discord_rpc_thread.join().unwrap();
 }
 struct SkyRenderer {
     vao: glwrappers::VertexArray,
