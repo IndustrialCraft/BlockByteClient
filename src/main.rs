@@ -126,7 +126,12 @@ fn main() {
                 );
             }
         }
-        let font = rusttype::Font::try_from_bytes(include_bytes!("../assets/font.ttf")).unwrap();
+        let font = {
+            assets.push("font.ttf");
+            let font = rusttype::Font::try_from_vec(std::fs::read(&assets).unwrap()).unwrap();
+            assets.pop();
+            font
+        };
         let ret = pack_textures(textures_to_pack, &font);
         (ret.0, ret.1, font)
     };
