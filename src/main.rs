@@ -33,9 +33,7 @@ use game::Block;
 use game::BlockRegistry;
 use game::BlockRenderType;
 use game::Entity;
-use game::EntityModel;
 use game::SoundManager;
-use game::StaticBlockModel;
 use game::StaticBlockModelConnections;
 use glwrappers::Buffer;
 use glwrappers::Vertex;
@@ -45,6 +43,7 @@ use image::EncodableLayout;
 use image::Rgba;
 use image::RgbaImage;
 use json::JsonValue;
+use model::Model;
 use ogl33::c_char;
 use ogl33::c_void;
 use rustc_hash::FxHashMap;
@@ -177,7 +176,7 @@ fn main() {
                     let texture = texture_atlas
                         .get(model["texture"].as_str().unwrap())
                         .clone();
-                    let bb_model = &model["model"];
+                    /*let bb_model = &model["model"];
                     let models = if bb_model.is_array() {
                         let mut models = Vec::new();
                         for model in bb_model.members() {
@@ -218,7 +217,7 @@ fn main() {
                             )
                             .unwrap()
                         }]
-                    };
+                    };*/
                     let mut connections = StaticBlockModelConnections {
                         front: HashMap::new(),
                         back: HashMap::new(),
@@ -227,7 +226,7 @@ fn main() {
                         up: HashMap::new(),
                         down: HashMap::new(),
                     };
-                    let connections_json = &model["connections"];
+                    /*let connections_json = &model["connections"];
                     if !connections_json.is_null() {
                         for face in Face::all() {
                             let down = &connections_json[face.get_name()];
@@ -270,12 +269,15 @@ fn main() {
                                 }
                             }
                         }
-                    }
+                    }*/
                     block_registry.blocks[id as usize] = Block {
                         render_data: model["render_data"].as_u8().unwrap_or(0),
                         render_type: BlockRenderType::StaticModel(
                             model["transparent"].as_bool().unwrap_or(false),
-                            StaticBlockModel::new(&models, &texture),
+                            Model::new(
+                                include_bytes!("missing.bbm").to_vec(),
+                                texture_atlas.missing_texture.clone(),
+                            ),
                             model["north"].as_bool().unwrap_or(false),
                             model["south"].as_bool().unwrap_or(false),
                             model["right"].as_bool().unwrap_or(false),
@@ -337,7 +339,7 @@ fn main() {
                 _ => unreachable!(),
             }
         }
-        let mut entity_registry: HashMap<u32, EntityModel> = HashMap::new();
+        let mut entity_registry: HashMap<u32, (EntityRenderData, model::Model)> = HashMap::new();
         for entity in content["entities"].members() {
             let id = entity["id"].as_u32().unwrap();
             let entity_render_data = EntityRenderData {
@@ -348,16 +350,17 @@ fn main() {
                 hitbox_d: entity["hitboxD"].as_f32().unwrap(),
             };
             assets.push(&entity_render_data.model);
-            let model = match std::fs::read_to_string(assets.as_path()) {
-                Ok(str) => EntityModel::new(
-                    json::parse(str.as_str()).unwrap(),
-                    texture_atlas.get(&entity_render_data.texture),
+            let model = match std::fs::read(assets.as_path()) {
+                Ok(data) => (
                     entity_render_data,
+                    Model::new(data, texture_atlas.missing_texture.clone()),
                 ),
-                Err(_) => EntityModel::new(
-                    json::parse(include_str!("missing.bbmodel")).unwrap(),
-                    &texture_atlas.missing_texture,
+                Err(_) => (
                     entity_render_data,
+                    Model::new(
+                        include_bytes!("missing.bbm").to_vec(),
+                        texture_atlas.missing_texture.clone(),
+                    ),
                 ),
             };
             assets.pop();
@@ -472,7 +475,7 @@ fn main() {
     let mut last_fps_cnt = 0u32;
     let mut last_fps_time = timer.ticks();
     let mut entities: HashMap<u32, game::Entity> = HashMap::new();
-    let mut world_item_renderer = WorldItemRenderer::new();
+    let mut world_entity_renderer = WorldEntityRenderer::new();
     let mut sky_renderer = SkyRenderer::new();
     let mut fluid_selectable = false;
     let mut particle_manager = game::ParticleManager::new();
@@ -922,12 +925,10 @@ fn main() {
             ) * camera.create_view_matrix();
             model_shader.set_uniform_matrix(projection_view_loc, projection);
             let mut items_to_render_in_world = Vec::new();
+            let mut models = Vec::new();
             for entity in &entities {
-                entity_registry.get(&entity.1.entity_type).unwrap().render(
-                    entity.1.position,
-                    entity.1.rotation.to_radians(),
-                    &model_shader,
-                );
+                let model = entity_registry.get(&entity.1.entity_type).unwrap();
+                models.push((entity.1.position, "".to_string(), 0., &model.1));
                 for item in &entity.1.items {
                     items_to_render_in_world.push((entity.1.position.clone(), *item.1));
                 }
@@ -944,12 +945,13 @@ fn main() {
                     ));
                 }
             }
-            world_item_renderer.render(
+            world_entity_renderer.render(
                 items_to_render_in_world,
                 &item_registry,
                 &projection,
                 &texture_atlas,
                 &block_registry,
+                models,
             );
             particle_manager.tick(delta_time, &world, &block_registry);
             particle_manager.render(
@@ -1206,12 +1208,12 @@ fn pack_textures(
         exporter.to_rgba8(),
     )
 }
-struct WorldItemRenderer {
+struct WorldEntityRenderer {
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
     shader: glwrappers::Shader,
 }
-impl WorldItemRenderer {
+impl WorldEntityRenderer {
     pub fn new() -> Self {
         let vao = glwrappers::VertexArray::new().expect("couldnt create vao for outline renderer");
         vao.bind();
@@ -1242,7 +1244,7 @@ impl WorldItemRenderer {
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
         }
-        WorldItemRenderer {
+        WorldEntityRenderer {
             vao,
             vbo,
             shader: glwrappers::Shader::new(
@@ -1281,6 +1283,7 @@ impl WorldItemRenderer {
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
         block_registry: &BlockRegistry,
+        models: Vec<(Position, String, f32, &model::Model)>,
     ) {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
@@ -1290,7 +1293,7 @@ impl WorldItemRenderer {
             match item_texture {
                 ItemModel::Texture(texture) => {
                     let uv = texture_atlas.get(texture.as_str()).get_coords();
-                    WorldItemRenderer::add_face(
+                    WorldEntityRenderer::add_face(
                         &mut vertices,
                         position.x,
                         position.y,
@@ -1313,7 +1316,7 @@ impl WorldItemRenderer {
                     match block.render_type {
                         BlockRenderType::Air => {}
                         BlockRenderType::Cube(_, north, south, right, left, up, down) => {
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x,
                                 position.y,
@@ -1329,7 +1332,7 @@ impl WorldItemRenderer {
                                 position.z + 0.5,
                                 down.get_coords(),
                             );
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x,
                                 position.y + 0.5,
@@ -1345,7 +1348,7 @@ impl WorldItemRenderer {
                                 position.z + 0.5,
                                 up.get_coords(),
                             );
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x,
                                 position.y + 0.5,
@@ -1361,7 +1364,7 @@ impl WorldItemRenderer {
                                 position.z,
                                 north.get_coords(),
                             );
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x,
                                 position.y + 0.5,
@@ -1377,7 +1380,7 @@ impl WorldItemRenderer {
                                 position.z + 0.5,
                                 south.get_coords(),
                             );
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x,
                                 position.y + 0.5,
@@ -1393,7 +1396,7 @@ impl WorldItemRenderer {
                                 position.z,
                                 left.get_coords(),
                             );
-                            WorldItemRenderer::add_face(
+                            WorldEntityRenderer::add_face(
                                 &mut vertices,
                                 position.x + 0.5,
                                 position.y + 0.5,
@@ -1417,10 +1420,23 @@ impl WorldItemRenderer {
                 }
             }
         }
+        for model in models {
+            model.3.add_vertices(
+                &mut |pos, u, v| {
+                    vertices.push([pos.x, pos.y, pos.z, u, v]);
+                    vertex_count += 1;
+                },
+                Some((model.1, model.2)),
+                Vec3::new(model.0.x, model.0.y, model.0.z),
+                Vec3::new(0., (model.2 * 100.).to_radians() * 0., 0.),
+                Vec3::new(-0.125, 0., -0.125),
+                Vec3::new(1., 1., 1.),
+            );
+        }
         self.vao.bind();
         self.vbo.upload_data(
             bytemuck::cast_slice(vertices.as_slice()),
-            ogl33::GL_DYNAMIC_DRAW,
+            ogl33::GL_STREAM_DRAW,
         );
         self.shader.use_program();
         self.shader.set_uniform_matrix(
@@ -1456,14 +1472,14 @@ pub fn raycast(
     camera: &game::ClientPlayer,
     block_registry: &BlockRegistry,
     entities: &HashMap<u32, game::Entity>,
-    entity_registry: &HashMap<u32, EntityModel>,
+    entity_registry: &HashMap<u32, (EntityRenderData, model::Model)>,
     fluid_selectable: bool,
 ) -> Option<HitResult> {
     //TODO: better algorithm
     let mut ray_pos = camera.get_eye().clone();
     let dir = camera.make_front().normalized() * 0.01;
     let mut last_pos = ray_pos.clone();
-    for _ in 0..500 {
+    for _ in 0..200 {
         let position = BlockPosition {
             x: ray_pos.x.floor() as i32,
             y: ray_pos.y.floor() as i32,
@@ -1471,10 +1487,7 @@ pub fn raycast(
         };
         for entry in entities {
             let entity = entry.1;
-            let entity_render_data = &entity_registry
-                .get(&entity.entity_type)
-                .unwrap()
-                .render_data;
+            let entity_render_data = &entity_registry.get(&entity.entity_type).unwrap().0;
             if ray_pos.x >= entity.position.x
                 && ray_pos.x <= (entity.position.x + entity_render_data.hitbox_w)
                 && ray_pos.y >= entity.position.y
@@ -1491,7 +1504,8 @@ pub fn raycast(
                 match &block.render_type {
                     BlockRenderType::Air => {}
                     BlockRenderType::Cube(_, _, _, _, _, _, _)
-                    | BlockRenderType::Foliage(_, _, _, _) => {
+                    | BlockRenderType::Foliage(_, _, _, _)
+                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {
                         let last_pos = last_pos.to_block_pos();
                         let mut least_diff_face = Face::Up;
                         for face in Face::all() {
@@ -1504,48 +1518,47 @@ pub fn raycast(
                             }
                         }
                         return Some(HitResult::Block(position, id, least_diff_face));
-                    }
-                    BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _, _) => {
-                        let x = ray_pos.x - (position.x as f32);
-                        let y = ray_pos.y - (position.y as f32);
-                        let z = ray_pos.z - (position.z as f32);
-                        for cube in &model.cubes {
-                            if x >= cube.from.x
-                                && x <= cube.to.x
-                                && y >= cube.from.y
-                                && y <= cube.to.y
-                                && z >= cube.from.z
-                                && z <= cube.to.z
-                            {
-                                let size = Position {
-                                    x: cube.to.x - cube.from.x,
-                                    y: cube.to.y - cube.from.y,
-                                    z: cube.to.z - cube.from.z,
-                                };
-                                let mut least_diff_face = Face::Up;
-                                let mut least_diff = 10.;
-                                for face in Face::all() {
-                                    let offset = face.get_offset();
-                                    let diff = (((x - cube.from.x) / size.x) - 0.5
-                                        + (offset.x as f32))
-                                        .abs()
-                                        + (((y - cube.from.y) / size.y) - 0.5 + (offset.y as f32))
-                                            .abs()
-                                        + (((z - cube.from.z) / size.z) - 0.5 + (offset.z as f32))
-                                            .abs();
-                                    if diff <= least_diff {
-                                        least_diff = diff;
-                                        least_diff_face = face.clone();
-                                    }
-                                }
-                                return Some(HitResult::Block(
-                                    position,
-                                    id,
-                                    least_diff_face.opposite(),
-                                ));
-                            }
-                        }
-                    }
+                    } /* => {
+                          let x = ray_pos.x - (position.x as f32);
+                          let y = ray_pos.y - (position.y as f32);
+                          let z = ray_pos.z - (position.z as f32);
+                          for cube in &model.cubes {
+                              if x >= cube.from.x
+                                  && x <= cube.to.x
+                                  && y >= cube.from.y
+                                  && y <= cube.to.y
+                                  && z >= cube.from.z
+                                  && z <= cube.to.z
+                              {
+                                  let size = Position {
+                                      x: cube.to.x - cube.from.x,
+                                      y: cube.to.y - cube.from.y,
+                                      z: cube.to.z - cube.from.z,
+                                  };
+                                  let mut least_diff_face = Face::Up;
+                                  let mut least_diff = 10.;
+                                  for face in Face::all() {
+                                      let offset = face.get_offset();
+                                      let diff = (((x - cube.from.x) / size.x) - 0.5
+                                          + (offset.x as f32))
+                                          .abs()
+                                          + (((y - cube.from.y) / size.y) - 0.5 + (offset.y as f32))
+                                              .abs()
+                                          + (((z - cube.from.z) / size.z) - 0.5 + (offset.z as f32))
+                                              .abs();
+                                      if diff <= least_diff {
+                                          least_diff = diff;
+                                          least_diff_face = face.clone();
+                                      }
+                                  }
+                                  return Some(HitResult::Block(
+                                      position,
+                                      id,
+                                      least_diff_face.opposite(),
+                                  ));
+                              }
+                          }
+                      }*/
                 }
             }
         }
@@ -1597,7 +1610,7 @@ impl BlockOutline {
             vao,
             vbo,
             last_id: 0,
-            last_entity: false,
+            last_entity: true,
             vertex_count: 0,
         }
     }
@@ -1635,7 +1648,7 @@ impl BlockOutline {
         );
         self.vertex_count = 24;
     }
-    fn upload_static_model(&mut self, model: &StaticBlockModel, r: f32, g: f32, b: f32) {
+    /*fn upload_static_model(&mut self, model: &StaticBlockModel, r: f32, g: f32, b: f32) {
         let mut vertices: Vec<glwrappers::ColorVertex> = Vec::new();
         for cube in &model.cubes {
             let from = cube.from;
@@ -1672,7 +1685,7 @@ impl BlockOutline {
             ogl33::GL_STATIC_DRAW,
         );
         self.vertex_count = 24 * model.cubes.len() as i32;
-    }
+    }*/
     pub fn upload_entity(&mut self, entity_render_data: &EntityRenderData, r: f32, g: f32, b: f32) {
         let mut vertices: Vec<glwrappers::ColorVertex> = Vec::new();
         let w = entity_render_data.hitbox_w;
@@ -1716,7 +1729,7 @@ impl BlockOutline {
         shader: &glwrappers::Shader,
         block_registry: &BlockRegistry,
         entities: &HashMap<u32, game::Entity>,
-        entity_registry: &HashMap<u32, EntityModel>,
+        entity_registry: &HashMap<u32, (EntityRenderData, model::Model)>,
     ) {
         self.vao.bind();
         self.vbo.bind();
@@ -1740,21 +1753,9 @@ impl BlockOutline {
         );
         match hit_result {
             HitResult::Block(_, id, _) => {
-                if self.last_entity || self.last_id != *id {
-                    match &block_registry.get_block(*id).render_type {
-                        BlockRenderType::Cube(_, _, _, _, _, _, _) => {
-                            self.upload_cube(1., 0., 0.);
-                        }
-                        BlockRenderType::StaticModel(_, model, _, _, _, _, _, _, _, _) => {
-                            self.upload_static_model(model, 1., 0., 0.);
-                        }
-                        BlockRenderType::Foliage(_, _, _, _) => {
-                            self.upload_cube(1., 0., 0.);
-                        }
-                        BlockRenderType::Air => {}
-                    }
+                if self.last_entity {
+                    self.upload_cube(1., 0., 0.);
                     self.last_entity = false;
-                    self.last_id = *id;
                 }
             }
             HitResult::Entity(id) => {
@@ -1763,12 +1764,12 @@ impl BlockOutline {
                         &entity_registry
                             .get(&entities.get(id).unwrap().entity_type)
                             .unwrap()
-                            .render_data,
+                            .0,
                         1.,
                         0.,
                         0.,
                     );
-                    self.last_id = 0;
+                    self.last_id = *id;
                     self.last_entity = true;
                 }
             }

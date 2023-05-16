@@ -11,6 +11,7 @@ use std::{
 
 use crate::{
     glwrappers::{Vertex, VertexArray},
+    model,
     util::{self, *},
     TextureAtlas,
 };
@@ -792,28 +793,47 @@ impl<'a> Chunk<'a> {
                                 if let Some(connection) =
                                     connections.by_face(face).get(&neighbor_block)
                                 {
-                                    connection.add_to_chunk_mesh(
-                                        vertices,
-                                        block.render_data,
-                                        BlockPosition {
-                                            x: bx,
-                                            y: by,
-                                            z: bz,
+                                    connection.add_vertices_simple(
+                                        &mut |pos, u, v| {
+                                            vertices.push(Vertex {
+                                                x: pos.x + 0.5,
+                                                y: pos.y,
+                                                z: pos.z + 0.5,
+                                                u,
+                                                v,
+                                                render_data: block.render_data,
+                                                light,
+                                            });
+                                            self.vertex_count += 1;
                                         },
-                                        light,
+                                        None,
+                                        Vec3 {
+                                            x: bx as f32,
+                                            y: by as f32,
+                                            z: bz as f32,
+                                        },
                                     );
                                 }
                             }
-
-                            model.add_to_chunk_mesh(
-                                vertices,
-                                block.render_data,
-                                BlockPosition {
-                                    x: bx,
-                                    y: by,
-                                    z: bz,
+                            model.add_vertices_simple(
+                                &mut |pos, u, v| {
+                                    vertices.push(Vertex {
+                                        x: pos.x + 0.5,
+                                        y: pos.y,
+                                        z: pos.z + 0.5,
+                                        u,
+                                        v,
+                                        render_data: block.render_data,
+                                        light,
+                                    });
+                                    self.vertex_count += 1;
                                 },
-                                light,
+                                None,
+                                Vec3 {
+                                    x: bx as f32,
+                                    y: by as f32,
+                                    z: bz as f32,
+                                },
                             );
                         }
                         BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
@@ -821,9 +841,59 @@ impl<'a> Chunk<'a> {
                             let light = self.light[original_offset_in_chunk.0 as usize]
                                 [original_offset_in_chunk.1 as usize]
                                 [original_offset_in_chunk.2 as usize];
+                            let mut face_creator =
+                                |p1: Position,
+                                 p2: Position,
+                                 p3: Position,
+                                 p4: Position,
+                                 uv: (f32, f32, f32, f32),
+                                 render_data: u8,
+                                 light: u16| {
+                                    let v1 = Vertex {
+                                        x: p1.x,
+                                        y: p1.y,
+                                        z: p1.z,
+                                        u: uv.0,
+                                        v: uv.1,
+                                        render_data,
+                                        light,
+                                    };
+                                    let v2 = Vertex {
+                                        x: p2.x,
+                                        y: p2.y,
+                                        z: p2.z,
+                                        u: uv.2,
+                                        v: uv.1,
+                                        render_data,
+                                        light,
+                                    };
+                                    let v3 = Vertex {
+                                        x: p3.x,
+                                        y: p3.y,
+                                        z: p3.z,
+                                        u: uv.2,
+                                        v: uv.3,
+                                        render_data,
+                                        light,
+                                    };
+                                    let v4 = Vertex {
+                                        x: p4.x,
+                                        y: p4.y,
+                                        z: p4.z,
+                                        u: uv.0,
+                                        v: uv.3,
+                                        render_data,
+                                        light,
+                                    };
+                                    foliage_vertices.push(v1);
+                                    foliage_vertices.push(v2);
+                                    foliage_vertices.push(v3);
+                                    foliage_vertices.push(v3);
+                                    foliage_vertices.push(v4);
+                                    foliage_vertices.push(v1);
+                                };
                             if let Some(texture1) = texture1 {
-                                StaticBlockModel::create_face(
-                                    &mut foliage_vertices,
+                                face_creator.call_mut((
                                     Position {
                                         x: x + 0.01,
                                         y: y + 0.99,
@@ -843,11 +913,10 @@ impl<'a> Chunk<'a> {
                                     texture1.get_coords(),
                                     block.render_data,
                                     light,
-                                );
+                                ));
                             }
                             if let Some(texture2) = texture2 {
-                                StaticBlockModel::create_face(
-                                    &mut foliage_vertices,
+                                face_creator.call_mut((
                                     Position {
                                         x: x + 0.99,
                                         y: y + 0.99,
@@ -867,11 +936,10 @@ impl<'a> Chunk<'a> {
                                     texture2.get_coords(),
                                     block.render_data,
                                     light,
-                                );
+                                ));
                             }
                             if let Some(texture3) = texture3 {
-                                StaticBlockModel::create_face(
-                                    &mut foliage_vertices,
+                                face_creator.call_mut((
                                     Position {
                                         x: x + 0.5,
                                         y: y + 0.99,
@@ -891,11 +959,10 @@ impl<'a> Chunk<'a> {
                                     texture3.get_coords(),
                                     block.render_data,
                                     light,
-                                );
+                                ));
                             }
                             if let Some(texture4) = texture4 {
-                                StaticBlockModel::create_face(
-                                    &mut foliage_vertices,
+                                face_creator.call_mut((
                                     Position {
                                         x: x + 0.1,
                                         y: y + 0.99,
@@ -919,7 +986,7 @@ impl<'a> Chunk<'a> {
                                     texture4.get_coords(),
                                     block.render_data,
                                     light,
-                                );
+                                ));
                             }
                         }
                     }
@@ -1005,15 +1072,15 @@ impl<'a> Chunk<'a> {
 }
 #[derive(Clone)]
 pub struct StaticBlockModelConnections {
-    pub front: HashMap<u32, StaticBlockModel>,
-    pub back: HashMap<u32, StaticBlockModel>,
-    pub left: HashMap<u32, StaticBlockModel>,
-    pub right: HashMap<u32, StaticBlockModel>,
-    pub up: HashMap<u32, StaticBlockModel>,
-    pub down: HashMap<u32, StaticBlockModel>,
+    pub front: HashMap<u32, model::Model>,
+    pub back: HashMap<u32, model::Model>,
+    pub left: HashMap<u32, model::Model>,
+    pub right: HashMap<u32, model::Model>,
+    pub up: HashMap<u32, model::Model>,
+    pub down: HashMap<u32, model::Model>,
 }
 impl StaticBlockModelConnections {
-    pub fn by_face_mut(&mut self, face: &Face) -> &mut HashMap<u32, StaticBlockModel> {
+    pub fn by_face_mut(&mut self, face: &Face) -> &mut HashMap<u32, model::Model> {
         match face {
             Face::Front => &mut self.front,
             Face::Back => &mut self.back,
@@ -1023,7 +1090,7 @@ impl StaticBlockModelConnections {
             Face::Down => &mut self.down,
         }
     }
-    pub fn by_face(&self, face: &Face) -> &HashMap<u32, StaticBlockModel> {
+    pub fn by_face(&self, face: &Face) -> &HashMap<u32, model::Model> {
         match face {
             Face::Front => &self.front,
             Face::Back => &self.back,
@@ -1048,7 +1115,7 @@ pub enum BlockRenderType {
     ),
     StaticModel(
         bool,
-        StaticBlockModel,
+        model::Model,
         bool,
         bool,
         bool,
@@ -1508,601 +1575,6 @@ pub struct Entity {
     pub position: Position,
     pub rotation: f32,
     pub items: HashMap<u32, u32>,
-}
-#[derive(Clone, Debug)]
-pub struct BlockModelCube {
-    pub from: Position,
-    pub to: Position,
-    pub north_uv: (f32, f32, f32, f32),
-    pub south_uv: (f32, f32, f32, f32),
-    pub right_uv: (f32, f32, f32, f32),
-    pub left_uv: (f32, f32, f32, f32),
-    pub up_uv: (f32, f32, f32, f32),
-    pub down_uv: (f32, f32, f32, f32),
-    pub origin: (f32, f32, f32),
-    pub rotation: (f32, f32, f32),
-}
-#[derive(Clone)]
-pub struct StaticBlockModel {
-    pub cubes: Vec<BlockModelCube>,
-}
-impl StaticBlockModel {
-    pub fn new(json: &Vec<JsonValue>, texture: &AtlassedTexture) -> Self {
-        let mut cubes = Vec::new();
-        for json in json {
-            for element in json["elements"].members() {
-                assert_eq!(element["type"], "cube");
-                let from = EntityModel::parse_array_into_position(&element["from"]);
-                let to = EntityModel::parse_array_into_position(&element["to"]);
-                let faces = &element["faces"];
-                let rotation = if element["rotation"].is_null() {
-                    (0., 0., 0.)
-                } else {
-                    StaticBlockModel::parse_array_into_three_tuple(&element["rotation"])
-                };
-                cubes.push(BlockModelCube {
-                    from,
-                    to,
-                    north_uv: EntityModel::parse_uv(&faces["north"], texture),
-                    south_uv: EntityModel::parse_uv(&faces["south"], texture),
-                    right_uv: EntityModel::parse_uv(&faces["east"], texture),
-                    left_uv: EntityModel::parse_uv(&faces["west"], texture),
-                    up_uv: EntityModel::parse_uv(&faces["up"], texture),
-                    down_uv: EntityModel::parse_uv(&faces["down"], texture),
-                    origin: StaticBlockModel::parse_array_into_three_tuple(&element["origin"]),
-                    rotation,
-                });
-            }
-        }
-        StaticBlockModel { cubes }
-    }
-    pub fn parse_array_into_three_tuple(json: &JsonValue) -> (f32, f32, f32) {
-        (
-            json[0].as_f32().unwrap(),
-            json[1].as_f32().unwrap(),
-            json[2].as_f32().unwrap(),
-        )
-    }
-    pub fn add_to_chunk_mesh(
-        &self,
-        vertices: &mut Vec<Vertex>,
-        render_data: u8,
-        position: BlockPosition,
-        light: u16,
-    ) {
-        for cube in &self.cubes {
-            StaticBlockModel::create_cube(
-                vertices,
-                cube.from,
-                cube.to,
-                cube.north_uv,
-                cube.south_uv,
-                cube.up_uv,
-                cube.down_uv,
-                cube.left_uv,
-                cube.right_uv,
-                render_data,
-                position,
-                cube.rotation,
-                cube.origin,
-                light,
-            );
-        }
-    }
-    fn rotate_point(
-        point: (f32, f32, f32),
-        matrix: &Mat4,
-        origin: (f32, f32, f32),
-        position: BlockPosition,
-    ) -> Position {
-        let vec = matrix.transform_vec3(Vec3::new(
-            point.0 - 0.5 - origin.0,
-            point.1 - origin.1,
-            point.2 - 0.5 - origin.2,
-        ));
-        Position {
-            x: vec.x + 0.5 + origin.0 + (position.x as f32),
-            y: vec.y + origin.1 + (position.y as f32),
-            z: vec.z + 0.5 + origin.2 + (position.z as f32),
-        }
-    }
-    fn create_cube(
-        vertices: &mut Vec<Vertex>,
-        from: Position,
-        to: Position,
-        north: (f32, f32, f32, f32),
-        south: (f32, f32, f32, f32),
-        up: (f32, f32, f32, f32),
-        down: (f32, f32, f32, f32),
-        west: (f32, f32, f32, f32),
-        east: (f32, f32, f32, f32),
-        render_data: u8,
-        position: BlockPosition,
-        rotation: (f32, f32, f32),
-        origin: (f32, f32, f32),
-        light: u16,
-    ) {
-        let origin = (origin.0 / 16., origin.1 / 16., origin.2 / 16.);
-        let matrix = Mat4::from_euler_angles(
-            rotation.0.to_radians(),
-            rotation.1.to_radians(),
-            rotation.2.to_radians(),
-        );
-        let p000 =
-            StaticBlockModel::rotate_point((from.x, from.y, from.z), &matrix, origin, position);
-        let p001 =
-            StaticBlockModel::rotate_point((from.x, from.y, to.z), &matrix, origin, position);
-        let p010 =
-            StaticBlockModel::rotate_point((from.x, to.y, from.z), &matrix, origin, position);
-        let p011 = StaticBlockModel::rotate_point((from.x, to.y, to.z), &matrix, origin, position);
-        let p100 =
-            StaticBlockModel::rotate_point((to.x, from.y, from.z), &matrix, origin, position);
-        let p101 = StaticBlockModel::rotate_point((to.x, from.y, to.z), &matrix, origin, position);
-        let p110 = StaticBlockModel::rotate_point((to.x, to.y, from.z), &matrix, origin, position);
-        let p111 = StaticBlockModel::rotate_point((to.x, to.y, to.z), &matrix, origin, position);
-        StaticBlockModel::create_face(vertices, p000, p100, p101, p001, down, render_data, light);
-        StaticBlockModel::create_face(vertices, p010, p110, p111, p011, up, render_data, light);
-        StaticBlockModel::create_face(vertices, p000, p001, p011, p010, west, render_data, light);
-        StaticBlockModel::create_face(vertices, p100, p101, p111, p110, east, render_data, light);
-        StaticBlockModel::create_face(vertices, p000, p100, p110, p010, north, render_data, light);
-        StaticBlockModel::create_face(vertices, p001, p101, p111, p011, south, render_data, light);
-    }
-    fn create_face(
-        vertices: &mut Vec<Vertex>,
-        p1: Position,
-        p2: Position,
-        p3: Position,
-        p4: Position,
-        uv: (f32, f32, f32, f32),
-        render_data: u8,
-        light: u16,
-    ) {
-        let v1 = Vertex {
-            x: p1.x,
-            y: p1.y,
-            z: p1.z,
-            u: uv.0,
-            v: uv.1,
-            render_data,
-            light,
-        };
-        let v2 = Vertex {
-            x: p2.x,
-            y: p2.y,
-            z: p2.z,
-            u: uv.2,
-            v: uv.1,
-            render_data,
-            light,
-        };
-        let v3 = Vertex {
-            x: p3.x,
-            y: p3.y,
-            z: p3.z,
-            u: uv.2,
-            v: uv.3,
-            render_data,
-            light,
-        };
-        let v4 = Vertex {
-            x: p4.x,
-            y: p4.y,
-            z: p4.z,
-            u: uv.0,
-            v: uv.3,
-            render_data,
-            light,
-        };
-        vertices.push(v1);
-        vertices.push(v2);
-        vertices.push(v3);
-        vertices.push(v3);
-        vertices.push(v4);
-        vertices.push(v1);
-    }
-}
-pub struct EntityModel {
-    vao: glwrappers::VertexArray,
-    vbo: glwrappers::Buffer,
-    vertex_count: u32,
-    bones: HashMap<Uuid, ModelBone>,
-    pub render_data: EntityRenderData,
-}
-struct ModelBone {
-    id: Uuid,
-    render_id: u16,
-    parent: Option<Uuid>,
-    children: Vec<Uuid>,
-}
-impl ModelBone {
-    pub fn load(json: &json::JsonValue) -> (HashMap<Uuid, ModelBone>, HashMap<Uuid, Uuid>) {
-        let mut id_generator = 0u16;
-        let mut map = HashMap::new();
-        let mut render_map = HashMap::new();
-        ModelBone::load_children(&mut map, &mut render_map, json, None, &mut id_generator);
-        (map, render_map)
-    }
-    pub fn get_render_id(&self) -> u16 {
-        self.render_id
-    }
-    fn load_children(
-        map: &mut HashMap<Uuid, ModelBone>,
-        render_map: &mut HashMap<Uuid, Uuid>,
-        json: &json::JsonValue,
-        parent: Option<Uuid>,
-        id_generator: &mut u16,
-    ) -> Vec<Uuid> {
-        let mut children = Vec::new();
-        for bone in json.members() {
-            if bone.is_string() {
-                render_map.insert(
-                    Uuid::try_parse(bone.as_str().unwrap()).unwrap(),
-                    parent.expect("root node can only have other nodes"),
-                );
-            } else {
-                let uuid = Uuid::try_parse(bone["uuid"].as_str().unwrap()).unwrap();
-                let id = *id_generator;
-                id_generator.add_assign(1);
-                let bone_children = ModelBone::load_children(
-                    map,
-                    render_map,
-                    &bone["children"],
-                    Some(uuid),
-                    id_generator,
-                );
-                map.insert(
-                    uuid,
-                    ModelBone {
-                        id: uuid,
-                        render_id: id,
-                        parent,
-                        children: bone_children,
-                    },
-                );
-                children.push(uuid);
-            }
-        }
-        children
-    }
-}
-impl EntityModel {
-    pub fn new(
-        json: json::JsonValue,
-        texture_atlas: &AtlassedTexture,
-        render_data: EntityRenderData,
-    ) -> Self {
-        let vao = glwrappers::VertexArray::new().expect("couldnt create vao for entity renderer");
-        vao.bind();
-        let mut vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
-            .expect("couldnt create vbo for chunk");
-        vbo.bind();
-        unsafe {
-            ogl33::glVertexAttribPointer(
-                0,
-                3,
-                ogl33::GL_FLOAT,
-                ogl33::GL_FALSE,
-                std::mem::size_of::<glwrappers::ModelVertex>()
-                    .try_into()
-                    .unwrap(),
-                0 as *const _,
-            );
-            ogl33::glVertexAttribPointer(
-                1,
-                2,
-                ogl33::GL_FLOAT,
-                ogl33::GL_FALSE,
-                std::mem::size_of::<glwrappers::ModelVertex>()
-                    .try_into()
-                    .unwrap(),
-                12 as *const _,
-            );
-            ogl33::glVertexAttribIPointer(
-                2,
-                1,
-                ogl33::GL_SHORT,
-                std::mem::size_of::<glwrappers::ModelVertex>()
-                    .try_into()
-                    .unwrap(),
-                20 as *const _,
-            );
-            ogl33::glEnableVertexAttribArray(2);
-            ogl33::glEnableVertexAttribArray(1);
-            ogl33::glEnableVertexAttribArray(0);
-        }
-        let mut vertices: Vec<ModelVertex> = Vec::new();
-        let (bones, bones_render_data) = ModelBone::load(&json["outliner"]);
-        for element in json["elements"].members() {
-            assert_eq!(element["type"], "cube");
-            let uuid = Uuid::try_parse(element["uuid"].as_str().unwrap()).unwrap();
-            let from = EntityModel::parse_array_into_position(&element["from"]);
-            let to = EntityModel::parse_array_into_position(&element["to"]);
-            let faces = &element["faces"];
-            EntityModel::create_cube(
-                &mut vertices,
-                from,
-                to,
-                EntityModel::parse_uv(&faces["north"], texture_atlas),
-                EntityModel::parse_uv(&faces["south"], texture_atlas),
-                EntityModel::parse_uv(&faces["up"], texture_atlas),
-                EntityModel::parse_uv(&faces["down"], texture_atlas),
-                EntityModel::parse_uv(&faces["west"], texture_atlas),
-                EntityModel::parse_uv(&faces["east"], texture_atlas),
-                bones[&bones_render_data[&uuid]].get_render_id(),
-            );
-        }
-        vbo.upload_data(
-            bytemuck::cast_slice(vertices.as_slice()),
-            ogl33::GL_STATIC_DRAW,
-        );
-        EntityModel {
-            vao,
-            vbo,
-            vertex_count: vertices.len() as u32,
-            bones,
-            render_data,
-        }
-    }
-    pub fn render(&self, position: Position, rotation: f32, shader: &glwrappers::Shader) {
-        if self.vertex_count == 0 {
-            return;
-        }
-        self.vao.bind();
-        self.vbo.bind();
-        shader.set_uniform_matrix(
-            shader
-                .get_uniform_location("model\0")
-                .expect("uniform model not found"),
-            ultraviolet::Mat4::from_translation(ultraviolet::Vec3 {
-                x: position.x + (self.render_data.hitbox_w / 2.),
-                y: position.y,
-                z: position.z + (self.render_data.hitbox_d / 2.),
-            }) * ultraviolet::Mat4::from_rotation_y(rotation),
-        );
-        let mut bone_matrices = Vec::new();
-        //todo
-        for _bone in &self.bones {
-            bone_matrices.push(ultraviolet::Mat4::from_translation(ultraviolet::Vec3 {
-                x: 0.,
-                y: 0.,
-                z: 0., /*i as f32*/
-            }));
-        }
-        shader.set_uniform_matrices(
-            shader.get_uniform_location("bones\0").unwrap(),
-            bone_matrices,
-        );
-        unsafe {
-            ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
-        }
-    }
-    fn parse_uv(json: &json::JsonValue, texture: &AtlassedTexture) -> (f32, f32, f32, f32) {
-        let json = &json["uv"];
-        assert_eq!(json.len(), 4);
-        let uv1 = texture.map((json[0].as_f32().unwrap(), json[1].as_f32().unwrap()));
-        let uv2 = texture.map((json[2].as_f32().unwrap(), json[3].as_f32().unwrap()));
-        (uv2.0, uv2.1, uv1.0, uv1.1)
-    }
-    fn parse_array_into_position(json: &json::JsonValue) -> Position {
-        assert_eq!(json.len(), 3);
-        Position {
-            x: (json[0].as_f32().unwrap() / 16.) + 0.5,
-            y: json[1].as_f32().unwrap() / 16.,
-            z: (json[2].as_f32().unwrap() / 16.) + 0.5,
-        }
-    }
-    fn create_cube(
-        vertices: &mut Vec<ModelVertex>,
-        from: Position,
-        to: Position,
-        north: (f32, f32, f32, f32),
-        south: (f32, f32, f32, f32),
-        up: (f32, f32, f32, f32),
-        down: (f32, f32, f32, f32),
-        west: (f32, f32, f32, f32),
-        east: (f32, f32, f32, f32),
-        bone_id: u16,
-    ) {
-        let size = Position {
-            x: to.x - from.x,
-            y: to.y - from.y,
-            z: to.z - from.z,
-        };
-        EntityModel::create_face(
-            vertices,
-            from,
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            down,
-            bone_id,
-        );
-        EntityModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            up,
-            bone_id,
-        );
-        EntityModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            west,
-            bone_id,
-        );
-        EntityModel::create_face(
-            vertices,
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            east,
-            bone_id,
-        );
-        EntityModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z,
-            },
-            north,
-            bone_id,
-        );
-        EntityModel::create_face(
-            vertices,
-            Position {
-                x: from.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x + size.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            Position {
-                x: from.x,
-                y: from.y + size.y,
-                z: from.z + size.z,
-            },
-            south,
-            bone_id,
-        );
-    }
-    fn create_face(
-        vertices: &mut Vec<ModelVertex>,
-        p1: Position,
-        p2: Position,
-        p3: Position,
-        p4: Position,
-        uv: (f32, f32, f32, f32),
-        bone_id: u16,
-    ) {
-        let v1 = ModelVertex {
-            x: p1.x,
-            y: p1.y,
-            z: p1.z,
-            u: uv.0,
-            v: uv.1,
-            render_data: bone_id,
-        };
-        let v2 = ModelVertex {
-            x: p2.x,
-            y: p2.y,
-            z: p2.z,
-            u: uv.2,
-            v: uv.1,
-            render_data: bone_id,
-        };
-        let v3 = ModelVertex {
-            x: p3.x,
-            y: p3.y,
-            z: p3.z,
-            u: uv.2,
-            v: uv.3,
-            render_data: bone_id,
-        };
-        let v4 = ModelVertex {
-            x: p4.x,
-            y: p4.y,
-            z: p4.z,
-            u: uv.0,
-            v: uv.3,
-            render_data: bone_id,
-        };
-        vertices.push(v1);
-        vertices.push(v2);
-        vertices.push(v3);
-        vertices.push(v3);
-        vertices.push(v4);
-        vertices.push(v1);
-    }
 }
 pub struct ParticleManager {
     renderer: ParticleRenderer,

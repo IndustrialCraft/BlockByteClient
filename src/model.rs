@@ -10,15 +10,17 @@ use crate::game::AtlassedTexture;
 use crate::glwrappers::Vertex;
 use crate::util;
 use crate::util::Position;
-
+#[derive(Clone)]
 pub struct Model {
     root_bone: Bone,
     animations: Vec<Animation>,
     texture: AtlassedTexture,
 }
 impl Model {
-    pub fn new(file: &Path, texture: AtlassedTexture) -> Self {
-        let data = std::fs::read(file).unwrap();
+    pub fn new_from_file(file: &Path, texture: AtlassedTexture) -> Self {
+        Model::new(std::fs::read(file).unwrap(), texture)
+    }
+    pub fn new(data: Vec<u8>, texture: AtlassedTexture) -> Self {
         let mut data = data.as_slice();
         Model {
             root_bone: Bone::from_stream(&mut data),
@@ -39,8 +41,7 @@ impl Model {
     pub fn add_vertices<F>(
         &self,
         vertex_consumer: &mut F,
-        animation: String,
-        time: f32,
+        animation: Option<(String, f32)>,
         position: Vec3,
         rotation: Vec3,
         rotation_origin: Vec3,
@@ -50,17 +51,18 @@ impl Model {
     {
         let mut animation_id = None;
         let mut animation_length = 1f32;
-        for i in 0..self.animations.len() {
-            let search_animation = self.animations.get(i).unwrap();
-            if search_animation.name == animation {
-                animation_id = Some(i as u32);
-                animation_length = search_animation.length;
+        if let Some((animation, time)) = animation {
+            for i in 0..self.animations.len() {
+                let search_animation = self.animations.get(i).unwrap();
+                if search_animation.name == animation {
+                    animation_id = Some((i as u32, time));
+                    animation_length = search_animation.length;
+                }
             }
         }
         self.root_bone.add_vertices(
             vertex_consumer,
-            animation_id,
-            time % animation_length,
+            animation_id.map(|id| (id.0, id.1 % animation_length)),
             Mat4::from_nonuniform_scale(scale)
                 * Bone::create_rotation_matrix_with_origin(
                     &rotation,
@@ -70,8 +72,34 @@ impl Model {
             &self.texture,
         );
     }
+    pub fn add_vertices_simple<F>(
+        &self,
+        vertex_consumer: &mut F,
+        animation: Option<(String, f32)>,
+        position: Vec3,
+    ) where
+        F: FnMut(Vec3, f32, f32),
+    {
+        let mut animation_id = None;
+        let mut animation_length = 1f32;
+        if let Some((animation, time)) = animation {
+            for i in 0..self.animations.len() {
+                let search_animation = self.animations.get(i).unwrap();
+                if search_animation.name == animation {
+                    animation_id = Some((i as u32, time));
+                    animation_length = search_animation.length;
+                }
+            }
+        }
+        self.root_bone.add_vertices(
+            vertex_consumer,
+            animation_id.map(|id| (id.0, id.1 % animation_length)),
+            Mat4::from_translation(position),
+            &self.texture,
+        );
+    }
 }
-
+#[derive(Clone)]
 struct Bone {
     child_bones: Vec<Bone>,
     cube_elements: Vec<CubeElement>,
@@ -111,25 +139,28 @@ impl Bone {
     pub fn add_vertices<F>(
         &self,
         vertex_consumer: &mut F,
-        animation: Option<u32>,
-        time: f32,
+        animation: Option<(u32, f32)>,
         parent_matrix: Mat4,
         texture: &AtlassedTexture,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
-        let animation_data = animation.and_then(|id| self.animations.get(&id));
+        let animation_data = animation.and_then(|id| self.animations.get(&id.0));
         let animation_matrix = if let Some(animation_data) = animation_data {
-            let animation_data = animation_data.get_for_time(time);
+            let animation_data = animation_data.get_for_time(animation.unwrap().1);
             Mat4::from_nonuniform_scale(animation_data.2)
                 * Bone::create_rotation_matrix_with_origin(&animation_data.1, &self.origin)
-                * Mat4::from_translation(animation_data.0).inversed()
+                * Mat4::from_translation(Vec3 {
+                    x: -animation_data.0.x,
+                    y: animation_data.0.y,
+                    z: -animation_data.0.z,
+                })
         } else {
             Mat4::identity()
         };
         let bone_matrix = parent_matrix * animation_matrix;
         for child in &self.child_bones {
-            child.add_vertices(vertex_consumer, animation, time, bone_matrix, texture);
+            child.add_vertices(vertex_consumer, animation, bone_matrix, texture);
         }
         for cube in &self.cube_elements {
             Bone::create_cube(
@@ -291,6 +322,7 @@ impl Bone {
         vertex_consumer.call_mut(v1);
     }
 }
+#[derive(Clone)]
 struct CubeElement {
     position: Vec3,
     rotation: Vec3,
@@ -327,12 +359,14 @@ impl CubeElement {
         }
     }
 }
+#[derive(Clone)]
 struct CubeElementFace {
     u1: f32,
     v1: f32,
     u2: f32,
     v2: f32,
 }
+#[derive(Clone)]
 struct AnimationData {
     position: Vec<AnimationKeyframe>,
     rotation: Vec<AnimationKeyframe>,
@@ -417,6 +451,7 @@ fn from_stream_to_vec3(data: &mut &[u8]) -> Vec3 {
         z: data.read_be().unwrap(),
     }
 }
+#[derive(Clone)]
 struct Animation {
     name: String,
     length: f32,
