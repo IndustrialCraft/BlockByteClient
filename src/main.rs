@@ -56,6 +56,7 @@ use sdl2::keyboard::Keycode;
 use sdl2::mouse::MouseButton;
 use sdl2::surface::Surface;
 use sdl2::sys::KeyCode;
+use sdl2::video::FullscreenType;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
 use tungstenite::WebSocket;
@@ -75,9 +76,9 @@ fn main() {
     let video_subsystem = sdl.video().unwrap();
     let window = RefCell::new(
         video_subsystem
-            .window("Game", 900, 700)
+            .window("BlockByte", 900, 700)
             .opengl()
-            .fullscreen_desktop()
+            //.fullscreen_desktop()
             .resizable()
             .build()
             .unwrap(),
@@ -489,6 +490,7 @@ fn main() {
     let mut sky_renderer = SkyRenderer::new();
     let mut fluid_selectable = false;
     let mut particle_manager = game::ParticleManager::new();
+    let mut fullscreen = false;
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -827,6 +829,17 @@ fn main() {
                                 .write_message(tungstenite::Message::Binary(
                                     NetworkMessageC2S::GuiClose.to_data(),
                                 ))
+                                .unwrap();
+                        }
+                        if keycode.unwrap() == Keycode::F11 {
+                            fullscreen = !fullscreen;
+                            window
+                                .borrow_mut()
+                                .set_fullscreen(if fullscreen {
+                                    FullscreenType::Desktop
+                                } else {
+                                    FullscreenType::Off
+                                })
                                 .unwrap();
                         }
                         keys_held.insert(keycode.unwrap());
