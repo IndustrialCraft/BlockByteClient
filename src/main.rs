@@ -357,19 +357,19 @@ fn main() {
             assets.push(&entity_render_data.model);
             let model = match std::fs::read(assets.as_path()) {
                 Ok(data) => (
+                    Model::new(data, texture_atlas.get(&entity_render_data.texture).clone()),
                     entity_render_data,
-                    Model::new(data, texture_atlas.missing_texture.clone()),
                 ),
                 Err(_) => (
-                    entity_render_data,
                     Model::new(
                         include_bytes!("missing.bbm").to_vec(),
                         texture_atlas.missing_texture.clone(),
                     ),
+                    entity_render_data,
                 ),
             };
             assets.pop();
-            entity_registry.insert(id, model);
+            entity_registry.insert(id, (model.1, model.0));
         }
         let mut item_registry: HashMap<u32, ItemRenderData> = HashMap::new();
         for item in content["items"].members() {
@@ -522,7 +522,16 @@ fn main() {
                             NetworkMessageS2C::UnloadChunk(x, y, z) => {
                                 world.unload_chunk(ChunkPosition { x, y, z });
                             }
-                            NetworkMessageS2C::AddEntity(entity_type, id, x, y, z, rotation) => {
+                            NetworkMessageS2C::AddEntity(
+                                entity_type,
+                                id,
+                                x,
+                                y,
+                                z,
+                                rotation,
+                                animation,
+                                animation_time,
+                            ) => {
                                 entities.insert(
                                     id,
                                     game::Entity {
@@ -530,6 +539,10 @@ fn main() {
                                         rotation,
                                         position: Position { x, y, z },
                                         items: HashMap::new(),
+                                        animation: Some((
+                                            animation,
+                                            animation_time + (timer.ticks() as f32 / 1000.),
+                                        )),
                                     },
                                 );
                             }
@@ -617,6 +630,16 @@ fn main() {
                                     pitch,
                                     relative,
                                 );
+                            }
+                            NetworkMessageS2C::EntityAnimation(entity_id, animation) => {
+                                println!("animation set {}", animation);
+                                if let Some(entity) = entities.get_mut(&entity_id) {
+                                    entity.animation = if animation.is_empty() {
+                                        None
+                                    } else {
+                                        Some((animation, timer.ticks() as f32 / 1000.))
+                                    };
+                                }
                             }
                         }
                     }
@@ -892,6 +915,7 @@ fn main() {
                         camera.position.z - 0.3,
                         camera.is_shifting(),
                         camera.yaw_deg,
+                        camera.last_moved,
                     )
                     .to_data(),
                 ))
@@ -938,7 +962,20 @@ fn main() {
             let mut models = Vec::new();
             for entity in &entities {
                 let model = entity_registry.get(&entity.1.entity_type).unwrap();
-                models.push((entity.1.position, "".to_string(), 0., &model.1));
+                models.push((
+                    entity
+                        .1
+                        .position
+                        .add(model.0.hitbox_w / 2., 0., model.0.hitbox_d / 2.),
+                    match &entity.1.animation {
+                        Some(animation) => {
+                            Some((&animation.0, timer.ticks() as f32 / 1000. - animation.1))
+                        }
+                        None => None,
+                    },
+                    &model.1,
+                    entity.1.rotation,
+                ));
                 for item in &entity.1.items {
                     items_to_render_in_world.push((entity.1.position.clone(), *item.1));
                 }
@@ -1292,7 +1329,7 @@ impl WorldEntityRenderer {
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
         block_registry: &BlockRegistry,
-        models: Vec<(Position, String, f32, &model::Model)>,
+        models: Vec<(Position, Option<(&String, f32)>, &model::Model, f32)>,
     ) {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
@@ -1430,15 +1467,15 @@ impl WorldEntityRenderer {
             }
         }
         for model in models {
-            model.3.add_vertices(
+            model.2.add_vertices(
                 &mut |pos, u, v| {
                     vertices.push([pos.x, pos.y, pos.z, u, v]);
                     vertex_count += 1;
                 },
-                Some((model.1, model.2)),
+                model.1,
                 Vec3::new(model.0.x, model.0.y, model.0.z),
-                Vec3::new(0., (model.2 * 100.).to_radians() * 0., 0.),
-                Vec3::new(-0.125, 0., -0.125),
+                Vec3::new(0., (model.3 + 180.).to_radians(), 0.),
+                Vec3::new(0., 0., 0.),
                 Vec3::new(1., 1., 1.),
             );
         }

@@ -41,7 +41,7 @@ impl Model {
     pub fn add_vertices<F>(
         &self,
         vertex_consumer: &mut F,
-        animation: Option<(String, f32)>,
+        animation: Option<(&String, f32)>,
         position: Vec3,
         rotation: Vec3,
         rotation_origin: Vec3,
@@ -54,7 +54,7 @@ impl Model {
         if let Some((animation, time)) = animation {
             for i in 0..self.animations.len() {
                 let search_animation = self.animations.get(i).unwrap();
-                if search_animation.name == animation {
+                if &search_animation.name == animation {
                     animation_id = Some((i as u32, time));
                     animation_length = search_animation.length;
                 }

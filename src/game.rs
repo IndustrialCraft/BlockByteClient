@@ -34,6 +34,7 @@ pub struct ClientPlayer<'a> {
     shifting: bool,
     shifting_animation: f32,
     block_registry: &'a BlockRegistry,
+    pub last_moved: bool,
 }
 impl<'a> ClientPlayer<'a> {
     const UP: Vec3 = Vec3 {
@@ -117,6 +118,9 @@ impl<'a> ClientPlayer<'a> {
             }
         }
         let mut total_move = (move_vector + self.velocity) * (delta_time * 10f32);
+
+        self.last_moved = move_vector.mag() > 0.;
+
         if ClientPlayer::collides_at(
             self.block_registry,
             position.add(total_move.x, 0., 0.),
@@ -220,6 +224,7 @@ impl<'a> ClientPlayer<'a> {
             shifting: false,
             shifting_animation: 0f32,
             block_registry,
+            last_moved: false,
         }
     }
     fn eye_height_diff(&self) -> f32 {
@@ -1575,6 +1580,7 @@ pub struct Entity {
     pub position: Position,
     pub rotation: f32,
     pub items: HashMap<u32, u32>,
+    pub animation: Option<(String, f32)>,
 }
 pub struct ParticleManager {
     renderer: ParticleRenderer,

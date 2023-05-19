@@ -29,7 +29,7 @@ pub enum NetworkMessageS2C {
     SetBlock(i32, i32, i32, u32) = 0,
     LoadChunk(i32, i32, i32, Vec<u8>) = 1,
     UnloadChunk(i32, i32, i32) = 2,
-    AddEntity(u32, u32, f32, f32, f32, f32) = 3,
+    AddEntity(u32, u32, f32, f32, f32, f32, String, f32) = 3,
     MoveEntity(u32, f32, f32, f32, f32) = 4,
     DeleteEntity(u32) = 5,
     GuiData(json::JsonValue) = 6,
@@ -41,6 +41,7 @@ pub enum NetworkMessageS2C {
     Knockback(f32, f32, f32, bool) = 12,
     FluidSelectable(bool) = 13,
     PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
+    EntityAnimation(u32, String) = 15,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -92,6 +93,8 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
+                data.read_be().unwrap(),
+                read_string(&mut data),
                 data.read_be().unwrap(),
             )),
             4 => Some(NetworkMessageS2C::MoveEntity(
@@ -155,6 +158,10 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),
+            15 => Some(Self::EntityAnimation(
+                data.read_be().unwrap(),
+                read_string(&mut data),
+            )),
             _ => None,
         }
     }
@@ -162,7 +169,7 @@ impl NetworkMessageS2C {
 pub enum NetworkMessageC2S {
     BreakBlock(i32, i32, i32),
     RightClickBlock(i32, i32, i32, Face, bool),
-    PlayerPosition(f32, f32, f32, bool, f32),
+    PlayerPosition(f32, f32, f32, bool, f32, bool),
     MouseScroll(i32, i32),
     Keyboard(i32, bool, bool),
     GuiClick(String, MouseButton, bool),
@@ -197,13 +204,14 @@ impl NetworkMessageC2S {
                 data.write_be(face.to_owned() as u8).unwrap();
                 data.write_be(shifting.to_owned()).unwrap();
             }
-            Self::PlayerPosition(x, y, z, shifting, rotation) => {
+            Self::PlayerPosition(x, y, z, shifting, rotation, moving) => {
                 data.write_be(2u8).unwrap();
                 data.write_be(x.to_owned()).unwrap();
                 data.write_be(y.to_owned()).unwrap();
                 data.write_be(z.to_owned()).unwrap();
                 data.write_be(shifting.to_owned()).unwrap();
                 data.write_be(rotation.to_owned()).unwrap();
+                data.write_be(moving.to_owned()).unwrap();
             }
             Self::MouseScroll(x, y) => {
                 data.write_be(3u8).unwrap();
