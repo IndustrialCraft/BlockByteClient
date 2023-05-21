@@ -825,41 +825,43 @@ fn main() {
                     repeat,
                 } => {
                     if window_id == win_id {
-                        if keycode.unwrap() == Keycode::Escape {
+                        if let Some(keycode) = keycode {
+                            if keycode == Keycode::Escape {
+                                socket
+                                    .write_message(tungstenite::Message::Binary(
+                                        NetworkMessageC2S::GuiClose.to_data(),
+                                    ))
+                                    .unwrap();
+                            }
+                            if keycode == Keycode::F11 {
+                                fullscreen = !fullscreen;
+                                window
+                                    .borrow_mut()
+                                    .set_fullscreen(if fullscreen {
+                                        FullscreenType::Desktop
+                                    } else {
+                                        FullscreenType::Off
+                                    })
+                                    .unwrap();
+                            }
+                            if keycode == Keycode::F10 {
+                                vsync = !vsync;
+                                video_subsystem
+                                    .gl_set_swap_interval(if vsync {
+                                        SwapInterval::VSync
+                                    } else {
+                                        SwapInterval::Immediate
+                                    })
+                                    .unwrap();
+                            }
+                            keys_held.insert(keycode);
                             socket
                                 .write_message(tungstenite::Message::Binary(
-                                    NetworkMessageC2S::GuiClose.to_data(),
+                                    NetworkMessageC2S::Keyboard(keycode as i32, true, repeat)
+                                        .to_data(),
                                 ))
                                 .unwrap();
                         }
-                        if keycode.unwrap() == Keycode::F11 {
-                            fullscreen = !fullscreen;
-                            window
-                                .borrow_mut()
-                                .set_fullscreen(if fullscreen {
-                                    FullscreenType::Desktop
-                                } else {
-                                    FullscreenType::Off
-                                })
-                                .unwrap();
-                        }
-                        if keycode.unwrap() == Keycode::F10 {
-                            vsync = !vsync;
-                            video_subsystem
-                                .gl_set_swap_interval(if vsync {
-                                    SwapInterval::VSync
-                                } else {
-                                    SwapInterval::Immediate
-                                })
-                                .unwrap();
-                        }
-                        keys_held.insert(keycode.unwrap());
-                        socket
-                            .write_message(tungstenite::Message::Binary(
-                                NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, true, repeat)
-                                    .to_data(),
-                            ))
-                            .unwrap();
                     }
                 }
                 Event::KeyUp {
@@ -871,13 +873,15 @@ fn main() {
                     repeat,
                 } => {
                     if window_id == win_id {
-                        keys_held.remove(&keycode.unwrap());
-                        socket
-                            .write_message(tungstenite::Message::Binary(
-                                NetworkMessageC2S::Keyboard(keycode.unwrap() as i32, false, repeat)
-                                    .to_data(),
-                            ))
-                            .unwrap();
+                        if let Some(keycode) = keycode {
+                            keys_held.remove(&keycode);
+                            socket
+                                .write_message(tungstenite::Message::Binary(
+                                    NetworkMessageC2S::Keyboard(keycode as i32, false, repeat)
+                                        .to_data(),
+                                ))
+                                .unwrap();
+                        }
                     }
                 }
                 Event::Window {
