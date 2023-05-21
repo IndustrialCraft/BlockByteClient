@@ -8,6 +8,7 @@ use std::{
 
 use json::JsonValue;
 use rusttype::Scale;
+use sdl2::keyboard::Keycode;
 use tungstenite::WebSocket;
 use ultraviolet::Vec3;
 
@@ -639,6 +640,7 @@ pub struct GUI<'a> {
     window: &'a RefCell<sdl2::video::Window>,
     block_registry: &'a game::BlockRegistry,
     pub gui_scale: f32,
+    pub chat: ChatRenderer,
 }
 impl<'a> GUI<'a> {
     pub fn new(
@@ -664,6 +666,7 @@ impl<'a> GUI<'a> {
             window,
             block_registry,
             gui_scale: 1.5,
+            chat: ChatRenderer::new(),
         }
     }
     pub fn on_json_data(&mut self, data: JsonValue) {
@@ -852,6 +855,15 @@ impl<'a> GUI<'a> {
             -1.18,
             0.6,
         );
+        self.chat.add_quads(
+            &mut quads,
+            &self.font_renderer,
+            &self.texture_atlas,
+            &self.item_renderer,
+            &self.block_registry,
+            -0.8,
+            -0.6,
+        );
         quads
     }
     pub fn on_mouse_move(&mut self, x: i32, y: i32) -> bool {
@@ -1016,4 +1028,110 @@ pub struct ItemSlot {
     item: u32,
     count: u16,
     bar: Option<(f32, f32, f32, f32)>,
+}
+
+pub struct ChatRenderer {
+    messages: Vec<String>,
+    current_writing_message: String,
+    chat_writing_active: bool,
+}
+impl ChatRenderer {
+    pub fn new() -> Self {
+        ChatRenderer {
+            messages: Vec::new(),
+            current_writing_message: String::new(),
+            chat_writing_active: false,
+        }
+    }
+    pub fn add_quads(
+        &self,
+        quads: &mut Vec<GUIQuad>,
+        text_renderer: &TextRenderer,
+        texture_atlas: &TextureAtlas,
+        item_renderer: &HashMap<u32, ItemRenderData>,
+        block_registry: &BlockRegistry,
+        x: f32,
+        y: f32,
+    ) {
+        for i in 0..(self.messages.len().min(5) as u32) {
+            GUIComponent::TextComponent(
+                1.,
+                self.messages.get(i as usize).unwrap().clone(),
+                Color {
+                    r: 0.,
+                    g: 0.,
+                    b: 0.,
+                    a: 1.,
+                },
+                false,
+            )
+            .add_quads(
+                quads,
+                text_renderer,
+                texture_atlas,
+                item_renderer,
+                block_registry,
+                x,
+                y + ((i + 1) as f32 * 0.08),
+            );
+        }
+        if self.chat_writing_active {
+            GUIComponent::TextComponent(
+                1.,
+                self.current_writing_message.clone(),
+                Color {
+                    r: 0.,
+                    g: 0.,
+                    b: 0.,
+                    a: 1.,
+                },
+                false,
+            )
+            .add_quads(
+                quads,
+                text_renderer,
+                texture_atlas,
+                item_renderer,
+                block_registry,
+                x,
+                y,
+            );
+        }
+    }
+    pub fn on_text(&mut self, text: String) {
+        if self.chat_writing_active {
+            self.current_writing_message.push_str(text.as_str());
+        } else if text.to_lowercase() == "t" {
+            self.chat_writing_active = true;
+        }
+    }
+    pub fn on_key(&mut self, key: Keycode, socket: &mut WebSocket<TcpStream>) {
+        if self.chat_writing_active {
+            if key == Keycode::Escape {
+                self.current_writing_message.clear();
+                self.chat_writing_active = false;
+            }
+            if key == Keycode::Return {
+                if !self.current_writing_message.is_empty() {
+                    socket
+                        .write_message(tungstenite::Message::Binary(
+                            NetworkMessageC2S::SendMessage(self.current_writing_message.clone())
+                                .to_data(),
+                        ))
+                        .unwrap();
+                }
+                self.current_writing_message.clear();
+                self.chat_writing_active = false;
+            }
+            if key == Keycode::Backspace {
+                self.current_writing_message.pop();
+            }
+        }
+    }
+    pub fn is_active(&self) -> bool {
+        self.chat_writing_active
+    }
+    pub fn add_message(&mut self, message: String) {
+        self.messages.insert(0, message);
+    }
 }

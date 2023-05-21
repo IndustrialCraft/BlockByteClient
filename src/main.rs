@@ -644,6 +644,9 @@ fn main() {
                                     };
                                 }
                             }
+                            NetworkMessageS2C::ChatMessage(message) => {
+                                gui.chat.add_message(message);
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {
@@ -816,6 +819,15 @@ fn main() {
                         }
                     }
                 }
+                Event::TextInput {
+                    timestamp: _,
+                    window_id,
+                    text,
+                } => {
+                    if window_id == win_id {
+                        gui.chat.on_text(text);
+                    }
+                }
                 Event::KeyDown {
                     timestamp: _,
                     window_id,
@@ -826,13 +838,6 @@ fn main() {
                 } => {
                     if window_id == win_id {
                         if let Some(keycode) = keycode {
-                            if keycode == Keycode::Escape {
-                                socket
-                                    .write_message(tungstenite::Message::Binary(
-                                        NetworkMessageC2S::GuiClose.to_data(),
-                                    ))
-                                    .unwrap();
-                            }
                             if keycode == Keycode::F11 {
                                 fullscreen = !fullscreen;
                                 window
@@ -854,13 +859,23 @@ fn main() {
                                     })
                                     .unwrap();
                             }
-                            keys_held.insert(keycode);
-                            socket
-                                .write_message(tungstenite::Message::Binary(
-                                    NetworkMessageC2S::Keyboard(keycode as i32, true, repeat)
-                                        .to_data(),
-                                ))
-                                .unwrap();
+                            gui.chat.on_key(keycode, &mut socket);
+                            if !gui.chat.is_active() {
+                                if keycode == Keycode::Escape {
+                                    socket
+                                        .write_message(tungstenite::Message::Binary(
+                                            NetworkMessageC2S::GuiClose.to_data(),
+                                        ))
+                                        .unwrap();
+                                }
+                                keys_held.insert(keycode);
+                                socket
+                                    .write_message(tungstenite::Message::Binary(
+                                        NetworkMessageC2S::Keyboard(keycode as i32, true, repeat)
+                                            .to_data(),
+                                    ))
+                                    .unwrap();
+                            }
                         }
                     }
                 }
@@ -874,13 +889,15 @@ fn main() {
                 } => {
                     if window_id == win_id {
                         if let Some(keycode) = keycode {
-                            keys_held.remove(&keycode);
-                            socket
-                                .write_message(tungstenite::Message::Binary(
-                                    NetworkMessageC2S::Keyboard(keycode as i32, false, repeat)
-                                        .to_data(),
-                                ))
-                                .unwrap();
+                            if !gui.chat.is_active() {
+                                keys_held.remove(&keycode);
+                                socket
+                                    .write_message(tungstenite::Message::Binary(
+                                        NetworkMessageC2S::Keyboard(keycode as i32, false, repeat)
+                                            .to_data(),
+                                    ))
+                                    .unwrap();
+                            }
                         }
                     }
                 }

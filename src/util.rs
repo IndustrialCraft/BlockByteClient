@@ -42,6 +42,7 @@ pub enum NetworkMessageS2C {
     FluidSelectable(bool) = 13,
     PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
     EntityAnimation(u32, String) = 15,
+    ChatMessage(String) = 16,
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -162,6 +163,7 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 read_string(&mut data),
             )),
+            16 => Some(Self::ChatMessage(read_string(&mut data))),
             _ => None,
         }
     }
@@ -179,6 +181,7 @@ pub enum NetworkMessageC2S {
     RightClickEntity(u32),
     GuiScroll(String, i32, i32, bool),
     RightClick(bool),
+    SendMessage(String),
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -258,6 +261,10 @@ impl NetworkMessageC2S {
             Self::RightClick(shifting) => {
                 data.write_be(11u8).unwrap();
                 data.write_be(*shifting).unwrap();
+            }
+            Self::SendMessage(message) => {
+                data.write_be(12u8).unwrap();
+                write_string(&mut data, message);
             }
         };
         data
