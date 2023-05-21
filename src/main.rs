@@ -647,6 +647,10 @@ fn main() {
                             NetworkMessageS2C::ChatMessage(message) => {
                                 gui.chat.add_message(message);
                             }
+                            NetworkMessageS2C::PlayerAbilities(speed, movement_type) => {
+                                camera.speed = speed;
+                                camera.movement_type = movement_type;
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {

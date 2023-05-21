@@ -43,6 +43,24 @@ pub enum NetworkMessageS2C {
     PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
     EntityAnimation(u32, String) = 15,
     ChatMessage(String) = 16,
+    PlayerAbilities(f32, MovementType) = 17,
+}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum MovementType {
+    Normal,
+    Fly,
+    NoClip,
+}
+impl MovementType {
+    pub fn from_data(data: &mut &[u8]) -> Self {
+        let id: u8 = data.read_be().unwrap();
+        match id {
+            0 => MovementType::Normal,
+            1 => MovementType::Fly,
+            2 => MovementType::NoClip,
+            _ => panic!("unknown movementtype"),
+        }
+    }
 }
 fn write_string(data: &mut Vec<u8>, value: &String) {
     data.write_be(value.len() as u16).unwrap();
@@ -164,6 +182,10 @@ impl NetworkMessageS2C {
                 read_string(&mut data),
             )),
             16 => Some(Self::ChatMessage(read_string(&mut data))),
+            17 => Some(Self::PlayerAbilities(
+                data.read_be().unwrap(),
+                MovementType::from_data(&mut data),
+            )),
             _ => None,
         }
     }

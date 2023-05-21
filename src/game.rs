@@ -35,6 +35,8 @@ pub struct ClientPlayer<'a> {
     shifting_animation: f32,
     block_registry: &'a BlockRegistry,
     pub last_moved: bool,
+    pub speed: f32,
+    pub movement_type: MovementType,
 }
 impl<'a> ClientPlayer<'a> {
     const UP: Vec3 = Vec3 {
@@ -75,7 +77,7 @@ impl<'a> ClientPlayer<'a> {
             return;
         }
         let mut forward = self.make_front();
-        forward.y = 0.0;
+        forward.y = 0.;
         let cross_normalized = forward.cross(Self::UP).normalized();
         let mut move_vector = keys.iter().copied().fold(
             Vec3 {
@@ -96,32 +98,45 @@ impl<'a> ClientPlayer<'a> {
         if !(move_vector.x == 0.0 && move_vector.y == 0.0 && move_vector.z == 0.0) {
             move_vector = move_vector.normalized();
         }
-        move_vector /= 2.;
         if self.shifting {
             move_vector /= 2.;
         }
-        if keys.contains(&Keycode::Space) {
-            let block = world.get_block(position.to_block_pos()).unwrap();
-            let block = self.block_registry.get_block(block);
-            if block.fluid {
-                move_vector.y += 0.5;
-                self.velocity.y = 0.;
-            } else {
-                if ClientPlayer::collides_at(
-                    self.block_registry,
-                    position.add(0., -0.2, 0.),
-                    world,
-                    self.shifting,
-                ) {
-                    self.velocity.y = 0.8;
+        if self.movement_type == MovementType::Normal {
+            if keys.contains(&Keycode::Space) {
+                let block = world.get_block(position.to_block_pos()).unwrap();
+                let block = self.block_registry.get_block(block);
+                if block.fluid {
+                    move_vector.y += 1.;
+                    self.velocity.y = 0.;
+                } else {
+                    if ClientPlayer::collides_at(
+                        self.movement_type,
+                        self.block_registry,
+                        position.add(0., -0.2, 0.),
+                        world,
+                        self.shifting,
+                    ) {
+                        self.velocity.y = 0.8;
+                    }
                 }
             }
+        } else {
+            if keys.contains(&Keycode::Space) {
+                move_vector.y += 1.;
+            }
+            if keys.contains(&Keycode::LShift) {
+                move_vector.y -= 1.;
+            }
         }
+        move_vector *= self.speed;
+        move_vector /= 2.;
+
         let mut total_move = (move_vector + self.velocity) * (delta_time * 10f32);
 
         self.last_moved = move_vector.mag() > 0.;
 
         if ClientPlayer::collides_at(
+            self.movement_type,
             self.block_registry,
             position.add(total_move.x, 0., 0.),
             world,
@@ -131,6 +146,7 @@ impl<'a> ClientPlayer<'a> {
             self.velocity.x = 0.;
         }
         if ClientPlayer::collides_at(
+            self.movement_type,
             self.block_registry,
             position.add(total_move.x, total_move.y, 0.),
             world,
@@ -140,6 +156,7 @@ impl<'a> ClientPlayer<'a> {
             self.velocity.y = 0.;
         }
         if ClientPlayer::collides_at(
+            self.movement_type,
             self.block_registry,
             position.add(total_move.x, total_move.y, total_move.z),
             world,
@@ -151,12 +168,14 @@ impl<'a> ClientPlayer<'a> {
         if (total_move.x != 0.
             && self.shifting
             && ClientPlayer::collides_at(
+                self.movement_type,
                 self.block_registry,
                 position.add(0., -0.1, 0.),
                 world,
                 self.shifting,
             ))
             && !ClientPlayer::collides_at(
+                self.movement_type,
                 self.block_registry,
                 position.add(total_move.x, -0.1, 0.),
                 world,
@@ -169,12 +188,14 @@ impl<'a> ClientPlayer<'a> {
         if (total_move.z != 0.
             && self.shifting
             && ClientPlayer::collides_at(
+                self.movement_type,
                 self.block_registry,
                 position.add(total_move.x, -0.1, 0.),
                 world,
                 self.shifting,
             ))
             && !ClientPlayer::collides_at(
+                self.movement_type,
                 self.block_registry,
                 position.add(total_move.x, -0.1, total_move.z),
                 world,
@@ -184,19 +205,27 @@ impl<'a> ClientPlayer<'a> {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
+        //todo: change velocity based on delta_time
         self.velocity.x *= 0.9;
+        self.velocity.y *= 0.98;
         self.velocity.z *= 0.9;
         self.position += total_move;
-        self.velocity.y -= delta_time * 2f32;
+        if self.movement_type == MovementType::Normal {
+            self.velocity.y -= delta_time * 3f32;
+        }
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
     }
     fn collides_at(
+        movement_type: MovementType,
         block_registry: &BlockRegistry,
         position: util::Position,
         world: &World,
         shifting: bool,
     ) -> bool {
+        if movement_type == MovementType::NoClip {
+            return false;
+        }
         let bounding_box = AABB {
             x: position.x - 0.3,
             y: position.y,
@@ -225,6 +254,8 @@ impl<'a> ClientPlayer<'a> {
             shifting_animation: 0f32,
             block_registry,
             last_moved: false,
+            speed: 1.,
+            movement_type: MovementType::Normal,
         }
     }
     fn eye_height_diff(&self) -> f32 {
