@@ -491,6 +491,7 @@ fn main() {
     let mut fluid_selectable = false;
     let mut particle_manager = game::ParticleManager::new();
     let mut fullscreen = false;
+    let mut vsync = true;
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -839,6 +840,16 @@ fn main() {
                                     FullscreenType::Desktop
                                 } else {
                                     FullscreenType::Off
+                                })
+                                .unwrap();
+                        }
+                        if keycode.unwrap() == Keycode::F10 {
+                            vsync = !vsync;
+                            video_subsystem
+                                .gl_set_swap_interval(if vsync {
+                                    SwapInterval::VSync
+                                } else {
+                                    SwapInterval::Immediate
                                 })
                                 .unwrap();
                         }
