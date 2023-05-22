@@ -651,6 +651,11 @@ fn main() {
                                 camera.speed = speed;
                                 camera.movement_type = movement_type;
                             }
+                            NetworkMessageS2C::TeleportPlayer(x, y, z) => {
+                                camera.position.x = x;
+                                camera.position.y = y;
+                                camera.position.z = z;
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {
