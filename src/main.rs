@@ -436,10 +436,6 @@ fn main() {
         include_str!("shaders/outline.vert").to_string(),
         include_str!("shaders/outline.frag").to_string(),
     );
-    let model_shader = glwrappers::Shader::new(
-        include_str!("shaders/model.vert").to_string(),
-        include_str!("shaders/model.frag").to_string(),
-    );
     let gui_shader = glwrappers::Shader::new(
         include_str!("shaders/gui.vert").to_string(),
         include_str!("shaders/gui.frag").to_string(),
@@ -1001,17 +997,12 @@ fn main() {
                 )
             };
 
-            model_shader.use_program();
-            let projection_view_loc = model_shader
-                .get_uniform_location("projection_view\0")
-                .expect("transform uniform not found");
             let projection = ultraviolet::projection::perspective_gl(
                 90f32.to_radians(),
                 (win_width as f32) / (win_height as f32),
                 0.01,
                 1000.,
             ) * camera.create_view_matrix();
-            model_shader.set_uniform_matrix(projection_view_loc, projection);
             let mut items_to_render_in_world = Vec::new();
             let mut models = Vec::new();
             for entity in &entities {
