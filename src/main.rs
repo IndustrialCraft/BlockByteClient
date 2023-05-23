@@ -631,7 +631,6 @@ fn main() {
                                 );
                             }
                             NetworkMessageS2C::EntityAnimation(entity_id, animation) => {
-                                println!("animation set {}", animation);
                                 if let Some(entity) = entities.get_mut(&entity_id) {
                                     entity.animation = if animation.is_empty() {
                                         None

@@ -1621,23 +1621,7 @@ pub struct ParticleManager {
 }
 impl ParticleManager {
     pub fn new() -> Self {
-        let mut particles = Vec::new();
-        for i in 0..10 {
-            particles.push(Particle {
-                position: Position {
-                    x: (i as f32) * 1.5,
-                    y: 50.,
-                    z: 0.,
-                },
-                color: (0., 1., 0.),
-                velocity: (0., -0.3, 0.),
-                gravity: 1.,
-                lifetime: -10.,
-                blendout_lifetime: 7.,
-                destroy_on_collision: true,
-                destroyed: false,
-            });
-        }
+        let particles = Vec::new();
         ParticleManager {
             particles,
             renderer: ParticleRenderer::new(),
