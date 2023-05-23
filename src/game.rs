@@ -28,7 +28,7 @@ use crate::glwrappers::{self, ModelVertex};
 #[derive(Clone, Copy)]
 pub struct ClientPlayer<'a> {
     pub position: Vec3,
-    velocity: Vec3,
+    pub velocity: Vec3,
     pub pitch_deg: f32,
     pub yaw_deg: f32,
     shifting: bool,

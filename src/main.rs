@@ -646,6 +646,7 @@ fn main() {
                             NetworkMessageS2C::PlayerAbilities(speed, movement_type) => {
                                 camera.speed = speed;
                                 camera.movement_type = movement_type;
+                                camera.velocity = Vec3::new(0., 0., 0.);
                             }
                             NetworkMessageS2C::TeleportPlayer(x, y, z) => {
                                 camera.position.x = x;
