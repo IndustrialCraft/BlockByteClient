@@ -68,12 +68,18 @@ use endio::BERead;
 
 use sdl2::event::*;
 
+const ANTI_ALIAS: bool = false;
+
 fn main() {
     let mut args = std::env::args();
     args.next();
 
     let sdl = sdl2::init().unwrap();
     let video_subsystem = sdl.video().unwrap();
+    if ANTI_ALIAS {
+        video_subsystem.gl_attr().set_multisample_buffers(1);
+        video_subsystem.gl_attr().set_multisample_samples(16);
+    }
     let window = RefCell::new(
         video_subsystem
             .window("BlockByte", 900, 700)
@@ -94,6 +100,9 @@ fn main() {
             sdl2::sys::SDL_GL_GetProcAddress(f_name as *const c_char) as *const c_void
         });
         ogl33::glEnable(ogl33::GL_DEPTH_TEST);
+        if ANTI_ALIAS {
+            ogl33::glEnable(ogl33::GL_MULTISAMPLE);
+        }
         //ogl33::glEnable(ogl33::GL_CULL_FACE);
         ogl33::glFrontFace(ogl33::GL_CCW);
         ogl33::glCullFace(ogl33::GL_BACK);
