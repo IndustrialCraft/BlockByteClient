@@ -309,10 +309,10 @@ pub enum Corner {
 impl Corner {
     pub fn map(&self, coords: (f32, f32, f32, f32)) -> (f32, f32) {
         match self {
-            Self::UpLeft => (coords.0, coords.3),
-            Self::UpRight => (coords.2, coords.3),
-            Self::DownLeft => (coords.0, coords.1),
-            Self::DownRight => (coords.2, coords.1),
+            Self::UpLeft => (coords.0, coords.1),
+            Self::UpRight => (coords.2, coords.1),
+            Self::DownLeft => (coords.0, coords.3),
+            Self::DownRight => (coords.2, coords.3),
         }
     }
 }
@@ -368,7 +368,7 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownLeft,
+                    Corner::UpLeft,
                 ),
                 (
                     Vec3 {
@@ -376,7 +376,7 @@ impl Face {
                         y: 1.,
                         z: 1.,
                     },
-                    Corner::UpLeft,
+                    Corner::DownLeft,
                 ),
                 (
                     Vec3 {
@@ -384,7 +384,7 @@ impl Face {
                         y: 1.,
                         z: 1.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
                 (
                     Vec3 {
@@ -392,7 +392,7 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
             ],
             Self::Down => [
@@ -402,7 +402,7 @@ impl Face {
                         y: 0.,
                         z: 0.,
                     },
-                    Corner::DownLeft,
+                    Corner::UpLeft,
                 ),
                 (
                     Vec3 {
@@ -410,7 +410,7 @@ impl Face {
                         y: 0.,
                         z: 0.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
                 (
                     Vec3 {
@@ -418,7 +418,7 @@ impl Face {
                         y: 0.,
                         z: 1.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
                 (
                     Vec3 {
@@ -426,7 +426,7 @@ impl Face {
                         y: 0.,
                         z: 1.,
                     },
-                    Corner::UpLeft,
+                    Corner::DownLeft,
                 ),
             ],
             Self::Front => [
@@ -436,7 +436,7 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownLeft,
+                    Corner::UpLeft,
                 ),
                 (
                     Vec3 {
@@ -444,7 +444,7 @@ impl Face {
                         y: 0.,
                         z: 0.,
                     },
-                    Corner::UpLeft,
+                    Corner::DownLeft,
                 ),
                 (
                     Vec3 {
@@ -452,7 +452,7 @@ impl Face {
                         y: 0.,
                         z: 0.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
                 (
                     Vec3 {
@@ -460,7 +460,7 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
             ],
             Self::Back => [
@@ -470,7 +470,7 @@ impl Face {
                         y: 1.,
                         z: 1.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
                 (
                     Vec3 {
@@ -478,7 +478,7 @@ impl Face {
                         y: 1.,
                         z: 1.,
                     },
-                    Corner::DownLeft,
+                    Corner::UpLeft,
                 ),
                 (
                     Vec3 {
@@ -486,7 +486,7 @@ impl Face {
                         y: 0.,
                         z: 1.,
                     },
-                    Corner::UpLeft,
+                    Corner::DownLeft,
                 ),
                 (
                     Vec3 {
@@ -494,7 +494,7 @@ impl Face {
                         y: 0.,
                         z: 1.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
             ],
             Self::Left => [
@@ -504,7 +504,7 @@ impl Face {
                         y: 0.,
                         z: 1.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
                 (
                     Vec3 {
@@ -512,7 +512,7 @@ impl Face {
                         y: 1.,
                         z: 1.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
                 (
                     Vec3 {
@@ -520,7 +520,7 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownLeft,
+                    Corner::UpLeft,
                 ),
                 (
                     Vec3 {
@@ -528,7 +528,7 @@ impl Face {
                         y: 0.,
                         z: 0.,
                     },
-                    Corner::UpLeft,
+                    Corner::DownLeft,
                 ),
             ],
             Self::Right => [
@@ -538,20 +538,12 @@ impl Face {
                         y: 1.,
                         z: 0.,
                     },
-                    Corner::DownRight,
+                    Corner::UpRight,
                 ),
                 (
                     Vec3 {
                         x: 1.,
                         y: 1.,
-                        z: 1.,
-                    },
-                    Corner::DownLeft,
-                ),
-                (
-                    Vec3 {
-                        x: 1.,
-                        y: 0.,
                         z: 1.,
                     },
                     Corner::UpLeft,
@@ -560,9 +552,17 @@ impl Face {
                     Vec3 {
                         x: 1.,
                         y: 0.,
+                        z: 1.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
                         z: 0.,
                     },
-                    Corner::UpRight,
+                    Corner::DownRight,
                 ),
             ],
         }
