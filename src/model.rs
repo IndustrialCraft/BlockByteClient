@@ -9,6 +9,7 @@ use ultraviolet::Vec4;
 use crate::game::AtlassedTexture;
 use crate::glwrappers::Vertex;
 use crate::util;
+use crate::util::Corner;
 use crate::util::Position;
 #[derive(Clone)]
 pub struct Model {
@@ -256,28 +257,110 @@ impl Bone {
                 z: position.z + size.z,
                 w: 1.,
             };
-        Bone::create_face(vertex_consumer, p000, p100, p101, p001, down, texture);
-        Bone::create_face(vertex_consumer, p010, p110, p111, p011, up, texture);
-        Bone::create_face(vertex_consumer, p000, p001, p011, p010, west, texture);
-        Bone::create_face(vertex_consumer, p100, p101, p111, p110, east, texture);
-        Bone::create_face(vertex_consumer, p000, p100, p110, p010, south, texture);
-        Bone::create_face(vertex_consumer, p001, p101, p111, p011, north, texture);
+        Bone::create_face(
+            vertex_consumer,
+            p000,
+            Corner::DownLeft,
+            p100,
+            Corner::DownRight,
+            p101,
+            Corner::UpRight,
+            p001,
+            Corner::UpLeft,
+            down,
+            texture,
+        );
+        Bone::create_face(
+            vertex_consumer,
+            p010,
+            Corner::DownLeft,
+            p011,
+            Corner::DownRight,
+            p111,
+            Corner::UpRight,
+            p110,
+            Corner::DownRight,
+            up,
+            texture,
+        );
+        Bone::create_face(
+            vertex_consumer,
+            p000,
+            Corner::UpLeft,
+            p001,
+            Corner::UpRight,
+            p011,
+            Corner::DownRight,
+            p010,
+            Corner::DownLeft,
+            west,
+            texture,
+        );
+        Bone::create_face(
+            vertex_consumer,
+            p100,
+            Corner::UpLeft,
+            p110,
+            Corner::DownLeft,
+            p111,
+            Corner::DownRight,
+            p101,
+            Corner::UpRight,
+            east,
+            texture,
+        );
+        Bone::create_face(
+            vertex_consumer,
+            p000,
+            Corner::UpLeft,
+            p010,
+            Corner::DownLeft,
+            p110,
+            Corner::DownRight,
+            p100,
+            Corner::UpRight,
+            south,
+            texture,
+        );
+        Bone::create_face(
+            vertex_consumer,
+            p001,
+            Corner::UpLeft,
+            p101,
+            Corner::UpRight,
+            p111,
+            Corner::DownRight,
+            p011,
+            Corner::DownLeft,
+            north,
+            texture,
+        );
     }
     fn create_face<F>(
         vertex_consumer: &mut F,
         p1: Vec4,
+        pc1: Corner,
         p2: Vec4,
+        pc2: Corner,
         p3: Vec4,
+        pc3: Corner,
         p4: Vec4,
+        pc4: Corner,
         uv: &CubeElementFace,
         texture: &AtlassedTexture,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
-        let uv4 = texture.map_uv((uv.u1, uv.v1));
-        let uv3 = texture.map_uv((uv.u2, uv.v1));
-        let uv2 = texture.map_uv((uv.u2, uv.v2));
-        let uv1 = texture.map_uv((uv.u1, uv.v2));
+        let uv = {
+            let uv1 = texture.map_uv((uv.u1, uv.v1));
+            let uv2 = texture.map_uv((uv.u2, uv.v2));
+            (uv1.0, uv1.1, uv2.0, uv2.1)
+        };
+        let uv1 = pc1.map(uv);
+        let uv2 = pc2.map(uv);
+        let uv3 = pc3.map(uv);
+        let uv4 = pc4.map(uv);
+
         let v1 = (
             Vec3 {
                 x: p1.x,

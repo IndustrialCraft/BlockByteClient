@@ -95,7 +95,7 @@ fn main() {
         });
         ogl33::glEnable(ogl33::GL_DEPTH_TEST);
         //ogl33::glEnable(ogl33::GL_CULL_FACE);
-        ogl33::glFrontFace(ogl33::GL_CW);
+        ogl33::glFrontFace(ogl33::GL_CCW);
         ogl33::glCullFace(ogl33::GL_BACK);
         ogl33::glClearColor(0.2, 0.3, 0.3, 1.0);
         ogl33::glViewport(0, 0, win_width as i32, win_height as i32)
@@ -1982,52 +1982,56 @@ impl BlockBreakingManager {
                 self.vbo.bind();
                 let mut face_vertices = target_block.1.get_vertices();
                 for vertex in &mut face_vertices {
-                    vertex.x += target_block.0.x as f32;
-                    vertex.y += target_block.0.y as f32;
-                    vertex.z += target_block.0.z as f32;
+                    vertex.0.x += target_block.0.x as f32;
+                    vertex.0.y += target_block.0.y as f32;
+                    vertex.0.z += target_block.0.z as f32;
                 }
+                let uv0 = face_vertices[0].1.map(uv);
+                let uv1 = face_vertices[1].1.map(uv);
+                let uv2 = face_vertices[2].1.map(uv);
+                let uv3 = face_vertices[3].1.map(uv);
                 let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
                 vertices.push([
-                    face_vertices[0].x,
-                    face_vertices[0].y,
-                    face_vertices[0].z,
-                    uv.0,
-                    uv.1,
+                    face_vertices[0].0.x,
+                    face_vertices[0].0.y,
+                    face_vertices[0].0.z,
+                    uv0.0,
+                    uv0.1,
                 ]);
                 vertices.push([
-                    face_vertices[1].x,
-                    face_vertices[1].y,
-                    face_vertices[1].z,
-                    uv.2,
-                    uv.1,
+                    face_vertices[1].0.x,
+                    face_vertices[1].0.y,
+                    face_vertices[1].0.z,
+                    uv1.0,
+                    uv1.1,
                 ]);
                 vertices.push([
-                    face_vertices[2].x,
-                    face_vertices[2].y,
-                    face_vertices[2].z,
-                    uv.2,
-                    uv.3,
+                    face_vertices[2].0.x,
+                    face_vertices[2].0.y,
+                    face_vertices[2].0.z,
+                    uv2.0,
+                    uv2.1,
                 ]);
                 vertices.push([
-                    face_vertices[2].x,
-                    face_vertices[2].y,
-                    face_vertices[2].z,
-                    uv.2,
-                    uv.3,
+                    face_vertices[2].0.x,
+                    face_vertices[2].0.y,
+                    face_vertices[2].0.z,
+                    uv2.0,
+                    uv2.1,
                 ]);
                 vertices.push([
-                    face_vertices[3].x,
-                    face_vertices[3].y,
-                    face_vertices[3].z,
-                    uv.0,
-                    uv.3,
+                    face_vertices[3].0.x,
+                    face_vertices[3].0.y,
+                    face_vertices[3].0.z,
+                    uv3.0,
+                    uv3.1,
                 ]);
                 vertices.push([
-                    face_vertices[0].x,
-                    face_vertices[0].y,
-                    face_vertices[0].z,
-                    uv.0,
-                    uv.1,
+                    face_vertices[0].0.x,
+                    face_vertices[0].0.y,
+                    face_vertices[0].0.z,
+                    uv0.0,
+                    uv0.1,
                 ]);
                 self.vbo.upload_data(
                     bytemuck::cast_slice(vertices.as_slice()),

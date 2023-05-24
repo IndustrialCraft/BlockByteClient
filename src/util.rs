@@ -300,6 +300,24 @@ impl NetworkMessageC2S {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Corner {
+    UpLeft,
+    UpRight,
+    DownLeft,
+    DownRight,
+}
+impl Corner {
+    pub fn map(&self, coords: (f32, f32, f32, f32)) -> (f32, f32) {
+        match self {
+            Self::UpLeft => (coords.0, coords.3),
+            Self::UpRight => (coords.2, coords.3),
+            Self::DownLeft => (coords.0, coords.1),
+            Self::DownRight => (coords.2, coords.1),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Face {
     Front = 0,
     Back = 1,
@@ -341,139 +359,211 @@ impl Face {
             _ => None,
         }
     }
-    pub fn get_vertices(&self) -> [Vec3; 4] {
+    pub fn get_vertices(&self) -> [(Vec3, Corner); 4] {
         match self {
             Self::Up => [
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 1.,
-                },
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::UpLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::UpRight,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownRight,
+                ),
             ],
             Self::Down => [
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 1.,
-                },
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::DownRight,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpRight,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpLeft,
+                ),
             ],
             Self::Front => [
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 0.,
-                },
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::UpLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::UpRight,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownRight,
+                ),
             ],
             Self::Back => [
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 1.,
-                },
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::DownRight,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpRight,
+                ),
             ],
             Self::Left => [
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 1.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 0.,
-                    y: 0.,
-                    z: 0.,
-                },
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpRight,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::DownRight,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 0.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::UpLeft,
+                ),
             ],
             Self::Right => [
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 0.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 1.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 1.,
-                },
-                Vec3 {
-                    x: 1.,
-                    y: 0.,
-                    z: 0.,
-                },
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 0.,
+                    },
+                    Corner::DownRight,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 1.,
+                        z: 1.,
+                    },
+                    Corner::DownLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 1.,
+                    },
+                    Corner::UpLeft,
+                ),
+                (
+                    Vec3 {
+                        x: 1.,
+                        y: 0.,
+                        z: 0.,
+                    },
+                    Corner::UpRight,
+                ),
             ],
         }
     }

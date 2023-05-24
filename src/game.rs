@@ -18,6 +18,7 @@ use crate::{
 use alto::{Alto, OutputDevice, Source};
 use hashbrown::HashSet;
 use json::JsonValue;
+use ogl33::GL_CULL_FACE;
 use rustc_hash::FxHashMap;
 use sdl2::keyboard::Keycode;
 use ultraviolet::*;
@@ -701,57 +702,62 @@ impl<'a> Chunk<'a> {
                                     } else {
                                         &mut vertices
                                     };
+                                    let uv0 = face_vertices[0].1.map(uv);
+                                    let uv1 = face_vertices[1].1.map(uv);
+                                    let uv2 = face_vertices[2].1.map(uv);
+                                    let uv3 = face_vertices[3].1.map(uv);
+
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[0].x + x,
-                                        y: face_vertices[0].y + y,
-                                        z: face_vertices[0].z + z,
-                                        u: uv.0,
-                                        v: uv.1,
+                                        x: face_vertices[0].0.x + x,
+                                        y: face_vertices[0].0.y + y,
+                                        z: face_vertices[0].0.z + z,
+                                        u: uv0.0,
+                                        v: uv0.1,
                                         render_data: block.render_data,
                                         light,
                                     });
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[1].x + x,
-                                        y: face_vertices[1].y + y,
-                                        z: face_vertices[1].z + z,
-                                        u: uv.2,
-                                        v: uv.1,
+                                        x: face_vertices[1].0.x + x,
+                                        y: face_vertices[1].0.y + y,
+                                        z: face_vertices[1].0.z + z,
+                                        u: uv1.0,
+                                        v: uv1.1,
                                         render_data: block.render_data,
                                         light,
                                     });
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[2].x + x,
-                                        y: face_vertices[2].y + y,
-                                        z: face_vertices[2].z + z,
-                                        u: uv.2,
-                                        v: uv.3,
+                                        x: face_vertices[2].0.x + x,
+                                        y: face_vertices[2].0.y + y,
+                                        z: face_vertices[2].0.z + z,
+                                        u: uv2.0,
+                                        v: uv2.1,
                                         render_data: block.render_data,
                                         light,
                                     });
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[2].x + x,
-                                        y: face_vertices[2].y + y,
-                                        z: face_vertices[2].z + z,
-                                        u: uv.2,
-                                        v: uv.3,
+                                        x: face_vertices[2].0.x + x,
+                                        y: face_vertices[2].0.y + y,
+                                        z: face_vertices[2].0.z + z,
+                                        u: uv2.0,
+                                        v: uv2.1,
                                         render_data: block.render_data,
                                         light,
                                     });
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[3].x + x,
-                                        y: face_vertices[3].y + y,
-                                        z: face_vertices[3].z + z,
-                                        u: uv.0,
-                                        v: uv.3,
+                                        x: face_vertices[3].0.x + x,
+                                        y: face_vertices[3].0.y + y,
+                                        z: face_vertices[3].0.z + z,
+                                        u: uv3.0,
+                                        v: uv3.1,
                                         render_data: block.render_data,
                                         light,
                                     });
                                     vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[0].x + x,
-                                        y: face_vertices[0].y + y,
-                                        z: face_vertices[0].z + z,
-                                        u: uv.0,
-                                        v: uv.1,
+                                        x: face_vertices[0].0.x + x,
+                                        y: face_vertices[0].0.y + y,
+                                        z: face_vertices[0].0.z + z,
+                                        u: uv0.0,
+                                        v: uv0.1,
                                         render_data: block.render_data,
                                         light,
                                     });
@@ -1079,7 +1085,10 @@ impl<'a> Chunk<'a> {
                 rendered_chunks_stat.2 += 1;
                 self.foliage_vao.bind();
                 unsafe {
+                    ogl33::glDisable(GL_CULL_FACE);
+
                     ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
+                    ogl33::glEnable(GL_CULL_FACE);
                 }
             }
         }
@@ -1573,6 +1582,9 @@ impl<'a> World<'a> {
         time: f32,
         player_position: ChunkPosition,
     ) -> (i32, i32, i32, i32, i32) {
+        unsafe {
+            ogl33::glEnable(GL_CULL_FACE);
+        }
         let light_updates = self.update_lights() as i32;
         let mut rendered_chunks_stat = (0, 0, 0, self.chunks.len() as i32, light_updates);
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
@@ -1596,6 +1608,7 @@ impl<'a> World<'a> {
         unsafe {
             ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
             ogl33::glEnable(ogl33::GL_BLEND);
+            ogl33::glEnable(GL_CULL_FACE);
         }
         for chunk in rendered_chunks {
             chunk
@@ -1604,6 +1617,7 @@ impl<'a> World<'a> {
         }
         unsafe {
             ogl33::glDisable(ogl33::GL_BLEND);
+            ogl33::glDisable(GL_CULL_FACE);
         }
         rendered_chunks_stat
     }
