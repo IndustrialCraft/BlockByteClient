@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@master
+      - name: Update packages
+        run: sudo apt-get update
       - name: Install SDL2
         run: sudo apt-get install libsdl2-dev libsdl2-image-dev
       - uses: actions-rs/toolchain@v1
