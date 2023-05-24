@@ -1072,7 +1072,7 @@ impl ChatRenderer {
                 item_renderer,
                 block_registry,
                 x,
-                y + ((i + 1) as f32 * 0.08),
+                y + ((i + 1) as f32 * 0.07),
             );
         }
         if self.chat_writing_active {
