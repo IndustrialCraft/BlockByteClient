@@ -16,33 +16,53 @@ pub struct Model {
     root_bone: Bone,
     animations: Vec<Animation>,
     texture: AtlassedTexture,
+    animation_mapping: Vec<u32>,
 }
 impl Model {
-    pub fn new_from_file(file: &Path, texture: AtlassedTexture) -> Self {
-        Model::new(std::fs::read(file).unwrap(), texture)
+    pub fn new_from_file(
+        file: &Path,
+        texture: AtlassedTexture,
+        animation_mapping: Vec<String>,
+    ) -> Self {
+        Model::new(std::fs::read(file).unwrap(), texture, animation_mapping)
     }
-    pub fn new(data: Vec<u8>, texture: AtlassedTexture) -> Self {
+    pub fn new(data: Vec<u8>, texture: AtlassedTexture, animation_mapping: Vec<String>) -> Self {
         let mut data = data.as_slice();
-        Model {
-            root_bone: Bone::from_stream(&mut data),
-            animations: {
-                let animations_cnt: u32 = data.read_be().unwrap();
-                let mut animations = Vec::with_capacity(animations_cnt as usize);
-                for _ in 0..animations_cnt {
-                    animations.push(Animation {
-                        name: util::read_string(&mut data),
-                        length: data.read_be().unwrap(),
-                    })
+        let root_bone = Bone::from_stream(&mut data);
+        let animations = {
+            let animations_cnt: u32 = data.read_be().unwrap();
+            let mut animations = Vec::with_capacity(animations_cnt as usize);
+            for _ in 0..animations_cnt {
+                animations.push(Animation {
+                    name: util::read_string(&mut data),
+                    length: data.read_be().unwrap(),
+                })
+            }
+            animations
+        };
+        let animation_mapping = {
+            let mut mapping = Vec::new();
+            for animation in animation_mapping {
+                for i in 0..animations.len() {
+                    let search_animation = animations.get(i).unwrap();
+                    if search_animation.name == animation {
+                        mapping.push(i as u32);
+                    }
                 }
-                animations
-            },
+            }
+            mapping
+        };
+        Model {
+            root_bone,
+            animations,
             texture,
+            animation_mapping,
         }
     }
     pub fn add_vertices<F>(
         &self,
         vertex_consumer: &mut F,
-        animation: Option<(&String, f32)>,
+        animation: Option<(u32, f32)>,
         position: Vec3,
         rotation: Vec3,
         rotation_origin: Vec3,
@@ -53,11 +73,10 @@ impl Model {
         let mut animation_id = None;
         let mut animation_length = 1f32;
         if let Some((animation, time)) = animation {
-            for i in 0..self.animations.len() {
-                let search_animation = self.animations.get(i).unwrap();
-                if &search_animation.name == animation {
-                    animation_id = Some((i as u32, time));
-                    animation_length = search_animation.length;
+            if let Some(mapping) = self.animation_mapping.get(animation as usize) {
+                if let Some(animation) = self.animations.get(*mapping as usize) {
+                    animation_id = Some((*mapping, time));
+                    animation_length = animation.length;
                 }
             }
         }

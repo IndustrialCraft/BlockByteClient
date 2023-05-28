@@ -331,6 +331,10 @@ impl AABB {
         output
     }
 }
+pub struct DynamicBlockData {
+    pub id: u32,
+    pub animation: Option<(u32, f32)>,
+}
 
 pub struct Chunk<'a> {
     blocks: [[[u32; 16]; 16]; 16],
@@ -353,6 +357,7 @@ pub struct Chunk<'a> {
     right: Option<Rc<RefCell<Chunk<'a>>>>,
     up: Option<Rc<RefCell<Chunk<'a>>>>,
     down: Option<Rc<RefCell<Chunk<'a>>>>,
+    pub dynamic_blocks: HashMap<BlockPosition, DynamicBlockData>,
 }
 impl<'a> Chunk<'a> {
     fn set_neighbor_by_face(&mut self, face: &Face, chunk: Option<&Rc<RefCell<Chunk<'a>>>>) {
@@ -371,18 +376,28 @@ impl<'a> Chunk<'a> {
         blocks: [[[u32; 16]; 16]; 16],
         world: &mut World,
     ) -> Self {
+        let mut dynamic_blocks = HashMap::new();
         for x in 0..16 {
             for y in 0..16 {
                 for z in 0..16 {
-                    if block_registry
-                        .get_block(blocks[x as usize][y as usize][z as usize])
-                        .is_light_emmiting()
-                    {
-                        world.light_updates.insert(BlockPosition {
-                            x: position.x * 16 + x,
-                            y: position.y * 16 + y,
-                            z: position.z * 16 + z,
-                        });
+                    let id = blocks[x as usize][y as usize][z as usize];
+                    let block = block_registry.get_block(id);
+                    let block_position = BlockPosition {
+                        x: position.x * 16 + x,
+                        y: position.y * 16 + y,
+                        z: position.z * 16 + z,
+                    };
+                    if block.is_light_emmiting() {
+                        world.light_updates.insert(block_position);
+                    }
+                    if let BlockRenderType::DynamicModel(_) = block.render_type {
+                        dynamic_blocks.insert(
+                            block_position,
+                            DynamicBlockData {
+                                id,
+                                animation: None,
+                            },
+                        );
                     }
                 }
             }
@@ -555,11 +570,29 @@ impl<'a> Chunk<'a> {
             right: None,
             up: None,
             down: None,
+            dynamic_blocks,
         }
     }
     pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32) {
+        let position = BlockPosition {
+            x: (self.position.x * 16) + x as i32,
+            y: (self.position.y * 16) + y as i32,
+            z: (self.position.z * 16) + z as i32,
+        };
+        self.dynamic_blocks.remove(&position);
         self.blocks[x as usize][y as usize][z as usize] = block_type;
         self.modified = true;
+        if let BlockRenderType::DynamicModel(_) =
+            self.block_registry.get_block(block_type).render_type
+        {
+            self.dynamic_blocks.insert(
+                position,
+                DynamicBlockData {
+                    id: block_type,
+                    animation: None,
+                },
+            );
+        }
     }
     pub fn schedule_mesh_rebuild(&mut self) {
         self.modified = true;
@@ -880,6 +913,7 @@ impl<'a> Chunk<'a> {
                                 },
                             );
                         }
+                        BlockRenderType::DynamicModel(_) => {}
                         BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
                             let original_offset_in_chunk = position.chunk_offset();
                             let light = self.light[original_offset_in_chunk.0 as usize]
@@ -1178,6 +1212,7 @@ pub enum BlockRenderType {
         Option<AtlassedTexture>,
         Option<AtlassedTexture>,
     ),
+    DynamicModel(model::Model),
 }
 impl BlockRenderType {
     pub fn add_item_quads(
@@ -1188,7 +1223,8 @@ impl BlockRenderType {
         match self {
             Self::Air
             | Self::StaticModel(_, _, _, _, _, _, _, _, _, _)
-            | Self::Foliage(_, _, _, _) => {}
+            | Self::Foliage(_, _, _, _)
+            | Self::DynamicModel(_) => {}
             Self::Cube(_, north, _, right, _, up, _) => {
                 let top_texture = up.get_coords();
                 let front_texture = north.get_coords();
@@ -1300,6 +1336,7 @@ impl Block {
             BlockRenderType::Cube(_, _, _, _, _, _, _) => !self.is_transparent(),
             BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => false,
             BlockRenderType::Foliage(_, _, _, _) => false,
+            BlockRenderType::DynamicModel(_) => false,
         }
     }
     pub fn is_face_full(&self, face: &Face) -> bool {
@@ -1317,6 +1354,7 @@ impl Block {
                 }
             }
             BlockRenderType::Foliage(_, _, _, _) => false,
+            BlockRenderType::DynamicModel(_) => false,
         }
     }
     pub fn is_transparent(&self) -> bool {
@@ -1325,6 +1363,7 @@ impl Block {
             BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
             BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _, _) => transparent,
             BlockRenderType::Foliage(_, _, _, _) => false,
+            BlockRenderType::DynamicModel(_) => false,
         }
     }
 }
@@ -1381,7 +1420,7 @@ impl AtlassedTexture {
 }
 
 pub struct World<'a> {
-    chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
+    pub chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
     pub blocks_with_items: HashMap<BlockPosition, HashMap<u32, (f32, f32, f32, u32)>>,
     block_registry: &'a BlockRegistry,
     pub light_updates: BTreeSet<BlockPosition>,
@@ -1627,7 +1666,7 @@ pub struct Entity {
     pub position: Position,
     pub rotation: f32,
     pub items: HashMap<u32, u32>,
-    pub animation: Option<(String, f32)>,
+    pub animation: Option<(u32, f32)>,
 }
 pub struct ParticleManager {
     renderer: ParticleRenderer,

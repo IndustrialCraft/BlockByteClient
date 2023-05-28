@@ -29,7 +29,7 @@ pub enum NetworkMessageS2C {
     SetBlock(i32, i32, i32, u32) = 0,
     LoadChunk(i32, i32, i32, Vec<u8>) = 1,
     UnloadChunk(i32, i32, i32) = 2,
-    AddEntity(u32, u32, f32, f32, f32, f32, String, f32) = 3,
+    AddEntity(u32, u32, f32, f32, f32, f32, u32, f32) = 3,
     MoveEntity(u32, f32, f32, f32, f32) = 4,
     DeleteEntity(u32) = 5,
     GuiData(json::JsonValue) = 6,
@@ -41,7 +41,7 @@ pub enum NetworkMessageS2C {
     Knockback(f32, f32, f32, bool) = 12,
     FluidSelectable(bool) = 13,
     PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
-    EntityAnimation(u32, String) = 15,
+    EntityAnimation(u32, u32) = 15,
     ChatMessage(String) = 16,
     PlayerAbilities(f32, MovementType) = 17,
     TeleportPlayer(f32, f32, f32) = 18,
@@ -114,7 +114,7 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
-                read_string(&mut data),
+                data.read_be().unwrap(),
                 data.read_be().unwrap(),
             )),
             4 => Some(NetworkMessageS2C::MoveEntity(
@@ -180,7 +180,7 @@ impl NetworkMessageS2C {
             )),
             15 => Some(Self::EntityAnimation(
                 data.read_be().unwrap(),
-                read_string(&mut data),
+                data.read_be().unwrap(),
             )),
             16 => Some(Self::ChatMessage(read_string(&mut data))),
             17 => Some(Self::PlayerAbilities(
@@ -674,6 +674,14 @@ impl BlockPosition {
             x: ((self.x as f32) / 16f32).floor() as i32,
             y: ((self.y as f32) / 16f32).floor() as i32,
             z: ((self.z as f32) / 16f32).floor() as i32,
+        }
+    }
+    #[inline(always)]
+    pub fn to_position(&self) -> Position {
+        Position {
+            x: self.x as f32,
+            y: self.y as f32,
+            z: self.z as f32,
         }
     }
 }

@@ -187,6 +187,52 @@ fn main() {
                         },
                     };
                 }
+                "dynamic" => {
+                    let texture = texture_atlas
+                        .get(model["texture"].as_str().unwrap())
+                        .clone();
+                    block_registry.blocks[id as usize] = Block {
+                        render_data: model["render_data"].as_u8().unwrap_or(0),
+                        render_type: BlockRenderType::DynamicModel(Model::new(
+                            {
+                                match model["model"].as_str() {
+                                    Some(model) => {
+                                        assets.push(model.to_string() + ".bbm");
+                                        let data = std::fs::read(&assets)
+                                            .unwrap_or(include_bytes!("missing.bbm").to_vec());
+                                        assets.pop();
+                                        data
+                                    }
+                                    None => include_bytes!("missing.bbm").to_vec(),
+                                }
+                            },
+                            texture,
+                            {
+                                let mut animations = Vec::new();
+                                if !model["animations"].is_null() {
+                                    for animation in model["animations"].members() {
+                                        animations.push(animation.as_str().unwrap().to_string());
+                                    }
+                                }
+                                animations
+                            },
+                        )),
+                        fluid: model["fluid"].as_bool().unwrap_or(false),
+                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                        light: {
+                            let light = &model["light"];
+                            if !light.is_null() {
+                                (
+                                    light[0].as_u8().unwrap().min(15),
+                                    light[1].as_u8().unwrap().min(15),
+                                    light[2].as_u8().unwrap().min(15),
+                                )
+                            } else {
+                                (0, 0, 0)
+                            }
+                        },
+                    };
+                }
                 "static" => {
                     let texture = texture_atlas
                         .get(model["texture"].as_str().unwrap())
@@ -290,8 +336,20 @@ fn main() {
                         render_type: BlockRenderType::StaticModel(
                             model["transparent"].as_bool().unwrap_or(false),
                             Model::new(
-                                include_bytes!("missing.bbm").to_vec(),
-                                texture_atlas.missing_texture.clone(),
+                                {
+                                    match model["model"].as_str() {
+                                        Some(model) => {
+                                            assets.push(model.to_string() + ".bbm");
+                                            let data = std::fs::read(&assets)
+                                                .unwrap_or(include_bytes!("missing.bbm").to_vec());
+                                            assets.pop();
+                                            data
+                                        }
+                                        None => include_bytes!("missing.bbm").to_vec(),
+                                    }
+                                },
+                                texture,
+                                Vec::new(),
                             ),
                             model["north"].as_bool().unwrap_or(false),
                             model["south"].as_bool().unwrap_or(false),
@@ -367,13 +425,26 @@ fn main() {
             assets.push(&entity_render_data.model);
             let model = match std::fs::read(assets.as_path()) {
                 Ok(data) => (
-                    Model::new(data, texture_atlas.get(&entity_render_data.texture).clone()),
+                    Model::new(
+                        data,
+                        texture_atlas.get(&entity_render_data.texture).clone(),
+                        {
+                            let mut animations = Vec::new();
+                            if !entity["animations"].is_null() {
+                                for animation in entity["animations"].members() {
+                                    animations.push(animation.as_str().unwrap().to_string());
+                                }
+                            }
+                            animations
+                        },
+                    ),
                     entity_render_data,
                 ),
                 Err(_) => (
                     Model::new(
                         include_bytes!("missing.bbm").to_vec(),
                         texture_atlas.missing_texture.clone(),
+                        Vec::new(),
                     ),
                     entity_render_data,
                 ),
@@ -641,10 +712,10 @@ fn main() {
                             }
                             NetworkMessageS2C::EntityAnimation(entity_id, animation) => {
                                 if let Some(entity) = entities.get_mut(&entity_id) {
-                                    entity.animation = if animation.is_empty() {
+                                    entity.animation = if animation == 0 {
                                         None
                                     } else {
-                                        Some((animation, timer.ticks() as f32 / 1000.))
+                                        Some((animation - 1, timer.ticks() as f32 / 1000.))
                                     };
                                 }
                             }
@@ -1023,7 +1094,7 @@ fn main() {
                         .add(model.0.hitbox_w / 2., 0., model.0.hitbox_d / 2.),
                     match &entity.1.animation {
                         Some(animation) => {
-                            Some((&animation.0, timer.ticks() as f32 / 1000. - animation.1))
+                            Some((animation.0, timer.ticks() as f32 / 1000. - animation.1))
                         }
                         None => None,
                     },
@@ -1032,6 +1103,25 @@ fn main() {
                 ));
                 for item in &entity.1.items {
                     items_to_render_in_world.push((entity.1.position.clone(), *item.1));
+                }
+            }
+            for chunk in &world.chunks {
+                let chunk = chunk.1.borrow();
+                for block in &chunk.dynamic_blocks {
+                    models.push((
+                        block.0.to_position().add(0.5, 0., 0.5),
+                        match &block.1.animation {
+                            Some(animation) => {
+                                Some((animation.0, timer.ticks() as f32 / 1000. - animation.1))
+                            }
+                            None => None,
+                        },
+                        match &block_registry.get_block(block.1.id).render_type {
+                            BlockRenderType::DynamicModel(model) => model,
+                            _ => panic!("non dynamic model was marked as dynamic"),
+                        },
+                        0.,
+                    ));
                 }
             }
             for block in &world.blocks_with_items {
@@ -1383,7 +1473,7 @@ impl WorldEntityRenderer {
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
         block_registry: &BlockRegistry,
-        models: Vec<(Position, Option<(&String, f32)>, &model::Model, f32)>,
+        models: Vec<(Position, Option<(u32, f32)>, &model::Model, f32)>,
     ) {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
@@ -1516,6 +1606,7 @@ impl WorldEntityRenderer {
                         }
                         BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {}
                         BlockRenderType::Foliage(_, _, _, _) => {}
+                        BlockRenderType::DynamicModel(_) => {}
                     }
                 }
             }
@@ -1605,7 +1696,8 @@ pub fn raycast(
                     BlockRenderType::Air => {}
                     BlockRenderType::Cube(_, _, _, _, _, _, _)
                     | BlockRenderType::Foliage(_, _, _, _)
-                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {
+                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _)
+                    | BlockRenderType::DynamicModel(_) => {
                         let last_pos = last_pos.to_block_pos();
                         let mut least_diff_face = Face::Up;
                         for face in Face::all() {
