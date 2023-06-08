@@ -732,6 +732,19 @@ fn main() {
                                 camera.position.y = y;
                                 camera.position.z = z;
                             }
+                            NetworkMessageS2C::BlockAnimation(x, y, z, animation) => {
+                                let position = BlockPosition { x, y, z };
+                                if let Some(mut chunk) =
+                                    world.get_mut_chunk(position.to_chunk_pos())
+                                {
+                                    if let Some(dynamic_block) =
+                                        chunk.dynamic_blocks.get_mut(&position)
+                                    {
+                                        dynamic_block.animation =
+                                            Some((animation, timer.ticks() as f32 / 1000.));
+                                    }
+                                }
+                            }
                         }
                     }
                     tungstenite::Message::Close(_) => {
