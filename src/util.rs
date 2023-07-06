@@ -217,6 +217,7 @@ pub enum NetworkMessageC2S {
     GuiScroll(String, i32, i32, bool),
     RightClick(bool),
     SendMessage(String),
+    ConnectionMode,
 }
 #[repr(u8)]
 #[derive(Clone, Copy)]
@@ -300,6 +301,10 @@ impl NetworkMessageC2S {
             Self::SendMessage(message) => {
                 data.write_be(12u8).unwrap();
                 write_string(&mut data, message);
+            }
+            Self::ConnectionMode => {
+                data.write_be(13u8).unwrap();
+                data.write_be(0u8).unwrap();
             }
         };
         data

@@ -59,6 +59,7 @@ use sdl2::sys::KeyCode;
 use sdl2::video::FullscreenType;
 use sdl2::video::SwapInterval;
 use texture_packer::{exporter::ImageExporter, importer::ImageImporter, texture::Texture};
+use tungstenite::Message;
 use tungstenite::WebSocket;
 use ultraviolet::Mat4;
 use ultraviolet::Vec3;
@@ -485,6 +486,9 @@ fn main() {
         None,
     )
     .unwrap();
+    socket
+        .write_message(Message::Binary(NetworkMessageC2S::ConnectionMode.to_data()))
+        .unwrap();
     socket.get_mut().set_nonblocking(true).unwrap();
     let (discord_rpc_thread, discord_rpc_thread_tx) = {
         let (discord_thread_tx, discord_thread_rx) = std::sync::mpsc::channel();
