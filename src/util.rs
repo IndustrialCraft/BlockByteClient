@@ -342,10 +342,10 @@ impl Face {
     const FACES: [Face; 6] = [
         Face::Front,
         Face::Back,
-        Face::Left,
-        Face::Right,
         Face::Up,
         Face::Down,
+        Face::Left,
+        Face::Right,
     ];
     pub fn all() -> &'static [Face; 6] {
         &Face::FACES
