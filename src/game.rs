@@ -1744,7 +1744,7 @@ impl ParticleRenderer {
             ogl33::glVertexAttribPointer(0, 2, ogl33::GL_FLOAT, ogl33::GL_FALSE, 8, 0 as *const _);
             ogl33::glEnableVertexAttribArray(0);
             particle_vbo.bind();
-            ogl33::glVertexAttribPointer(1, 3, ogl33::GL_FLOAT, ogl33::GL_FALSE, 28, 0 as *const _);
+            ogl33::glVertexAttribPointer(1, 3, ogl33::GL_FLOAT, ogl33::GL_FALSE, 32, 0 as *const _);
             ogl33::glVertexAttribDivisor(1, 1);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glVertexAttribPointer(
@@ -1752,11 +1752,21 @@ impl ParticleRenderer {
                 4,
                 ogl33::GL_FLOAT,
                 ogl33::GL_FALSE,
-                28,
+                32,
                 12 as *const _,
             );
             ogl33::glVertexAttribDivisor(2, 1);
             ogl33::glEnableVertexAttribArray(2);
+            ogl33::glVertexAttribPointer(
+                3,
+                1,
+                ogl33::GL_FLOAT,
+                ogl33::GL_FALSE,
+                32,
+                28 as *const _,
+            );
+            ogl33::glVertexAttribDivisor(3, 1);
+            ogl33::glEnableVertexAttribArray(3);
         }
         VertexArray::unbind();
         ParticleRenderer {
@@ -1784,6 +1794,7 @@ impl ParticleRenderer {
                 } else {
                     1.
                 },
+                particle.size,
             ]);
         }
         self.shader.use_program();
@@ -1814,6 +1825,7 @@ pub struct Particle {
     position: Position,
     color: (f32, f32, f32),
     velocity: (f32, f32, f32),
+    size: f32,
     gravity: f32,
     lifetime: f32,
     blendout_lifetime: f32,
