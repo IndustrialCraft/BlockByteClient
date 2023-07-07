@@ -11,7 +11,7 @@ use std::{
 
 use crate::{
     glwrappers::{Vertex, VertexArray},
-    model,
+    model::{self, Model},
     util::{self, *},
     TextureAtlas,
 };
@@ -390,7 +390,7 @@ impl<'a> Chunk<'a> {
                     if block.is_light_emmiting() {
                         world.light_updates.insert(block_position);
                     }
-                    if let BlockRenderType::DynamicModel(_) = block.render_type {
+                    if block.dynamic.is_some() {
                         dynamic_blocks.insert(
                             block_position,
                             DynamicBlockData {
@@ -582,9 +582,7 @@ impl<'a> Chunk<'a> {
         self.dynamic_blocks.remove(&position);
         self.blocks[x as usize][y as usize][z as usize] = block_type;
         self.modified = true;
-        if let BlockRenderType::DynamicModel(_) =
-            self.block_registry.get_block(block_type).render_type
-        {
+        if self.block_registry.get_block(block_type).dynamic.is_some() {
             self.dynamic_blocks.insert(
                 position,
                 DynamicBlockData {
@@ -913,7 +911,6 @@ impl<'a> Chunk<'a> {
                                 },
                             );
                         }
-                        BlockRenderType::DynamicModel(_) => {}
                         BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
                             let original_offset_in_chunk = position.chunk_offset();
                             let light = self.light[original_offset_in_chunk.0 as usize]
@@ -1212,7 +1209,6 @@ pub enum BlockRenderType {
         Option<AtlassedTexture>,
         Option<AtlassedTexture>,
     ),
-    DynamicModel(model::Model),
 }
 impl BlockRenderType {
     pub fn add_item_quads(
@@ -1223,8 +1219,7 @@ impl BlockRenderType {
         match self {
             Self::Air
             | Self::StaticModel(_, _, _, _, _, _, _, _, _, _)
-            | Self::Foliage(_, _, _, _)
-            | Self::DynamicModel(_) => {}
+            | Self::Foliage(_, _, _, _) => {}
             Self::Cube(_, north, _, right, _, up, _) => {
                 let top_texture = up.get_coords();
                 let front_texture = north.get_coords();
@@ -1312,6 +1307,7 @@ impl BlockRenderType {
 #[derive(Clone)]
 pub struct Block {
     pub render_type: BlockRenderType,
+    pub dynamic: Option<Model>,
     pub render_data: u8,
     pub fluid: bool,
     pub no_collision: bool,
@@ -1322,6 +1318,7 @@ impl Block {
         Block {
             render_data: 0,
             render_type: BlockRenderType::Air,
+            dynamic: None,
             fluid: false,
             no_collision: true,
             light: (0, 0, 0),
@@ -1336,7 +1333,6 @@ impl Block {
             BlockRenderType::Cube(_, _, _, _, _, _, _) => !self.is_transparent(),
             BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => false,
             BlockRenderType::Foliage(_, _, _, _) => false,
-            BlockRenderType::DynamicModel(_) => false,
         }
     }
     pub fn is_face_full(&self, face: &Face) -> bool {
@@ -1354,7 +1350,6 @@ impl Block {
                 }
             }
             BlockRenderType::Foliage(_, _, _, _) => false,
-            BlockRenderType::DynamicModel(_) => false,
         }
     }
     pub fn is_transparent(&self) -> bool {
@@ -1363,7 +1358,6 @@ impl Block {
             BlockRenderType::Cube(transparent, _, _, _, _, _, _) => transparent,
             BlockRenderType::StaticModel(transparent, _, _, _, _, _, _, _, _, _) => transparent,
             BlockRenderType::Foliage(_, _, _, _) => false,
-            BlockRenderType::DynamicModel(_) => false,
         }
     }
 }

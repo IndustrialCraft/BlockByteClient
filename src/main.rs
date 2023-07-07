@@ -159,259 +159,116 @@ fn main() {
         for block in content["blocks"].members() {
             let id = block["id"].as_u32().unwrap();
             let model = &block["model"];
-            match model["type"].as_str().unwrap() {
-                "cube" => {
-                    block_registry.blocks[id as usize] = game::Block {
-                        render_data: model["render_data"].as_u8().unwrap_or(0),
-                        render_type: game::BlockRenderType::Cube(
-                            model["transparent"].as_bool().unwrap_or(false),
-                            texture_atlas.get(model["north"].as_str().unwrap()).clone(),
-                            texture_atlas.get(model["south"].as_str().unwrap()).clone(),
-                            texture_atlas.get(model["right"].as_str().unwrap()).clone(),
-                            texture_atlas.get(model["left"].as_str().unwrap()).clone(),
-                            texture_atlas.get(model["up"].as_str().unwrap()).clone(),
-                            texture_atlas.get(model["down"].as_str().unwrap()).clone(),
-                        ),
-                        fluid: model["fluid"].as_bool().unwrap_or(false),
-                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        light: {
-                            let light = &model["light"];
-                            if !light.is_null() {
-                                (
-                                    light[0].as_u8().unwrap().min(15),
-                                    light[1].as_u8().unwrap().min(15),
-                                    light[2].as_u8().unwrap().min(15),
-                                )
-                            } else {
-                                (0, 0, 0)
-                            }
-                        },
-                    };
-                }
-                "dynamic" => {
-                    let texture = texture_atlas
-                        .get(model["texture"].as_str().unwrap())
-                        .clone();
-                    block_registry.blocks[id as usize] = Block {
-                        render_data: model["render_data"].as_u8().unwrap_or(0),
-                        render_type: BlockRenderType::DynamicModel(Model::new(
-                            {
-                                match model["model"].as_str() {
-                                    Some(model) => {
-                                        assets.push(model.to_string() + ".bbm");
-                                        let data = std::fs::read(&assets)
-                                            .unwrap_or(include_bytes!("missing.bbm").to_vec());
-                                        assets.pop();
-                                        data
-                                    }
-                                    None => include_bytes!("missing.bbm").to_vec(),
-                                }
-                            },
-                            texture,
-                            {
-                                let mut animations = Vec::new();
-                                if !model["animations"].is_null() {
-                                    for animation in model["animations"].members() {
-                                        animations.push(animation.as_str().unwrap().to_string());
-                                    }
-                                }
-                                animations
-                            },
-                        )),
-                        fluid: model["fluid"].as_bool().unwrap_or(false),
-                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        light: {
-                            let light = &model["light"];
-                            if !light.is_null() {
-                                (
-                                    light[0].as_u8().unwrap().min(15),
-                                    light[1].as_u8().unwrap().min(15),
-                                    light[2].as_u8().unwrap().min(15),
-                                )
-                            } else {
-                                (0, 0, 0)
-                            }
-                        },
-                    };
-                }
-                "static" => {
-                    let texture = texture_atlas
-                        .get(model["texture"].as_str().unwrap())
-                        .clone();
-                    /*let bb_model = &model["model"];
-                    let models = if bb_model.is_array() {
-                        let mut models = Vec::new();
-                        for model in bb_model.members() {
-                            models.push(
-                                json::parse(
-                                    {
-                                        assets
-                                            .push(model.as_str().unwrap().to_string() + ".bbmodel");
-                                        let json = match std::fs::read_to_string(&assets) {
-                                            Ok(string) => string,
-                                            Err(_) => {
-                                                include_str!("missing_block.bbmodel").to_string()
-                                            }
-                                        };
-                                        assets.pop();
-                                        json
-                                    }
-                                    .as_str(),
-                                )
-                                .unwrap(),
-                            );
-                        }
-                        models
-                    } else {
-                        vec![{
-                            json::parse(
-                                {
-                                    assets
-                                        .push(bb_model.as_str().unwrap().to_string() + ".bbmodel");
-                                    let json = match std::fs::read_to_string(&assets) {
-                                        Ok(string) => string,
-                                        Err(_) => include_str!("missing_block.bbmodel").to_string(),
-                                    };
+            let render_type = match model["type"].as_str().unwrap() {
+                "air" => BlockRenderType::Air,
+                "cube" => BlockRenderType::Cube(
+                    model["transparent"].as_bool().unwrap_or(false),
+                    texture_atlas.get(model["north"].as_str().unwrap()).clone(),
+                    texture_atlas.get(model["south"].as_str().unwrap()).clone(),
+                    texture_atlas.get(model["right"].as_str().unwrap()).clone(),
+                    texture_atlas.get(model["left"].as_str().unwrap()).clone(),
+                    texture_atlas.get(model["up"].as_str().unwrap()).clone(),
+                    texture_atlas.get(model["down"].as_str().unwrap()).clone(),
+                ),
+                "static" => BlockRenderType::StaticModel(
+                    model["transparent"].as_bool().unwrap_or(false),
+                    Model::new(
+                        {
+                            match model["model"].as_str() {
+                                Some(model) => {
+                                    assets.push(model.to_string() + ".bbm");
+                                    let data = std::fs::read(&assets)
+                                        .unwrap_or(include_bytes!("missing.bbm").to_vec());
                                     assets.pop();
-                                    json
+                                    data
                                 }
-                                .as_str(),
-                            )
-                            .unwrap()
-                        }]
-                    };*/
-                    let mut connections = StaticBlockModelConnections {
+                                None => include_bytes!("missing.bbm").to_vec(),
+                            }
+                        },
+                        texture_atlas
+                            .get(model["texture"].as_str().unwrap())
+                            .clone(),
+                        Vec::new(),
+                    ),
+                    model["north"].as_bool().unwrap_or(false),
+                    model["south"].as_bool().unwrap_or(false),
+                    model["right"].as_bool().unwrap_or(false),
+                    model["left"].as_bool().unwrap_or(false),
+                    model["up"].as_bool().unwrap_or(false),
+                    model["down"].as_bool().unwrap_or(false),
+                    StaticBlockModelConnections {
                         front: HashMap::new(),
                         back: HashMap::new(),
                         left: HashMap::new(),
                         right: HashMap::new(),
                         up: HashMap::new(),
                         down: HashMap::new(),
-                    };
-                    /*let connections_json = &model["connections"];
-                    if !connections_json.is_null() {
-                        for face in Face::all() {
-                            let down = &connections_json[face.get_name()];
-                            if !down.is_null() {
-                                for connection in down.entries() {
-                                    let id: u32 = connection.0.parse().unwrap();
-                                    connections.by_face_mut(face).insert(
-                                        id,
-                                        StaticBlockModel::new(
-                                            &vec![{
-                                                json::parse(
-                                                    {
-                                                        assets.push(
-                                                            connection.1["model"]
-                                                                .as_str()
-                                                                .unwrap()
-                                                                .to_string()
-                                                                + ".bbmodel",
-                                                        );
-                                                        let json = match std::fs::read_to_string(
-                                                            &assets,
-                                                        ) {
-                                                            Ok(string) => string,
-                                                            Err(_) => include_str!(
-                                                                "missing_block.bbmodel"
-                                                            )
-                                                            .to_string(),
-                                                        };
-                                                        assets.pop();
-                                                        json
-                                                    }
-                                                    .as_str(),
-                                                )
-                                                .unwrap()
-                                            }],
-                                            texture_atlas
-                                                .get(connection.1["texture"].as_str().unwrap()),
-                                        ),
-                                    );
+                    },
+                    model["foliage"].as_bool().unwrap_or(false),
+                ),
+                "foliage" => BlockRenderType::Foliage(
+                    model["texture1"]
+                        .as_str()
+                        .map(|t| texture_atlas.get(t).clone()),
+                    model["texture2"]
+                        .as_str()
+                        .map(|t| texture_atlas.get(t).clone()),
+                    model["texture3"]
+                        .as_str()
+                        .map(|t| texture_atlas.get(t).clone()),
+                    model["texture4"]
+                        .as_str()
+                        .map(|t| texture_atlas.get(t).clone()),
+                ),
+                _ => panic!("unknown render type {}", model["type"].as_str().unwrap()),
+            };
+            let dynamic = {
+                let dynamic = &model["dynamic"];
+                if dynamic.is_null() {
+                    None
+                } else {
+                    Some(Model::new(
+                        {
+                            match dynamic["model"].as_str() {
+                                Some(model) => {
+                                    assets.push(model.to_string() + ".bbm");
+                                    let data = std::fs::read(&assets)
+                                        .unwrap_or(include_bytes!("missing.bbm").to_vec());
+                                    assets.pop();
+                                    data
                                 }
-                            }
-                        }
-                    }*/
-                    block_registry.blocks[id as usize] = Block {
-                        render_data: model["render_data"].as_u8().unwrap_or(0),
-                        render_type: BlockRenderType::StaticModel(
-                            model["transparent"].as_bool().unwrap_or(false),
-                            Model::new(
-                                {
-                                    match model["model"].as_str() {
-                                        Some(model) => {
-                                            assets.push(model.to_string() + ".bbm");
-                                            let data = std::fs::read(&assets)
-                                                .unwrap_or(include_bytes!("missing.bbm").to_vec());
-                                            assets.pop();
-                                            data
-                                        }
-                                        None => include_bytes!("missing.bbm").to_vec(),
-                                    }
-                                },
-                                texture,
-                                Vec::new(),
-                            ),
-                            model["north"].as_bool().unwrap_or(false),
-                            model["south"].as_bool().unwrap_or(false),
-                            model["right"].as_bool().unwrap_or(false),
-                            model["left"].as_bool().unwrap_or(false),
-                            model["up"].as_bool().unwrap_or(false),
-                            model["down"].as_bool().unwrap_or(false),
-                            connections,
-                            model["foliage"].as_bool().unwrap_or(false),
-                        ),
-                        fluid: model["fluid"].as_bool().unwrap_or(false),
-                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        light: {
-                            let light = &model["light"];
-                            if !light.is_null() {
-                                (
-                                    light[0].as_u8().unwrap().min(15),
-                                    light[1].as_u8().unwrap().min(15),
-                                    light[2].as_u8().unwrap().min(15),
-                                )
-                            } else {
-                                (0, 0, 0)
+                                None => include_bytes!("missing.bbm").to_vec(),
                             }
                         },
-                    };
+                        texture_atlas
+                            .get(dynamic["texture"].as_str().unwrap())
+                            .clone(),
+                        dynamic["animations"]
+                            .members()
+                            .map(|animation| animation.as_str().unwrap().to_string())
+                            .collect(),
+                    ))
                 }
-                "foliage" => {
-                    block_registry.blocks[id as usize] = Block {
-                        render_data: model["render_data"].as_u8().unwrap_or(0),
-                        render_type: BlockRenderType::Foliage(
-                            model["texture1"]
-                                .as_str()
-                                .map(|t| texture_atlas.get(t).clone()),
-                            model["texture2"]
-                                .as_str()
-                                .map(|t| texture_atlas.get(t).clone()),
-                            model["texture3"]
-                                .as_str()
-                                .map(|t| texture_atlas.get(t).clone()),
-                            model["texture4"]
-                                .as_str()
-                                .map(|t| texture_atlas.get(t).clone()),
-                        ),
-                        fluid: model["fluid"].as_bool().unwrap_or(false),
-                        no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                        light: {
-                            let light = &model["light"];
-                            if !light.is_null() {
-                                (
-                                    light[0].as_u8().unwrap().min(15),
-                                    light[1].as_u8().unwrap().min(15),
-                                    light[2].as_u8().unwrap().min(15),
-                                )
-                            } else {
-                                (0, 0, 0)
-                            }
-                        },
+            };
+            block_registry.blocks[id as usize] = Block {
+                render_data: model["render_data"].as_u8().unwrap_or(0),
+                render_type,
+                fluid: model["fluid"].as_bool().unwrap_or(false),
+                no_collision: model["no_collide"].as_bool().unwrap_or(false),
+                light: {
+                    let light = &model["light"];
+                    if !light.is_null() {
+                        (
+                            light[0].as_u8().unwrap().min(15),
+                            light[1].as_u8().unwrap().min(15),
+                            light[2].as_u8().unwrap().min(15),
+                        )
+                    } else {
+                        (0, 0, 0)
                     }
-                }
-                _ => unreachable!(),
-            }
+                },
+                dynamic,
+            };
         }
         let mut entity_registry: HashMap<u32, (EntityRenderData, model::Model)> = HashMap::new();
         for entity in content["entities"].members() {
@@ -1133,9 +990,9 @@ fn main() {
                             }
                             None => None,
                         },
-                        match &block_registry.get_block(block.1.id).render_type {
-                            BlockRenderType::DynamicModel(model) => model,
-                            _ => panic!("non dynamic model was marked as dynamic"),
+                        match &block_registry.get_block(block.1.id).dynamic {
+                            Some(model) => model,
+                            None => panic!("non dynamic model was marked as dynamic"),
                         },
                         0.,
                     ));
@@ -1623,7 +1480,6 @@ impl WorldEntityRenderer {
                         }
                         BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {}
                         BlockRenderType::Foliage(_, _, _, _) => {}
-                        BlockRenderType::DynamicModel(_) => {}
                     }
                 }
             }
@@ -1713,8 +1569,7 @@ pub fn raycast(
                     BlockRenderType::Air => {}
                     BlockRenderType::Cube(_, _, _, _, _, _, _)
                     | BlockRenderType::Foliage(_, _, _, _)
-                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _)
-                    | BlockRenderType::DynamicModel(_) => {
+                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {
                         let last_pos = last_pos.to_block_pos();
                         let mut least_diff_face = Face::Up;
                         for face in Face::all() {

@@ -545,8 +545,7 @@ impl GUIComponent {
                                     _,
                                     _,
                                     _,
-                                )
-                                | game::BlockRenderType::DynamicModel(_) => {
+                                ) => {
                                     todo!()
                                 }
                             }
