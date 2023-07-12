@@ -1,8 +1,10 @@
 use endio::LERead;
 use endio::LEWrite;
 use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::path::Path;
 use ultraviolet::Mat4;
+use ultraviolet::Vec2;
 use ultraviolet::Vec3;
 use ultraviolet::Vec4;
 
@@ -10,25 +12,40 @@ use crate::game::AtlassedTexture;
 use crate::glwrappers::Vertex;
 use crate::util;
 use crate::util::Corner;
+use crate::util::ItemRenderData;
+use crate::util::ItemSlot;
 use crate::util::Position;
+use crate::TextureAtlas;
 #[derive(Clone)]
 pub struct Model {
     root_bone: Bone,
     animations: Vec<Animation>,
     texture: AtlassedTexture,
     animation_mapping: Vec<u32>,
+    item_mapping: Vec<String>,
 }
 impl Model {
     pub fn new_from_file(
         file: &Path,
         texture: AtlassedTexture,
         animation_mapping: Vec<String>,
+        item_mapping: Vec<String>,
     ) -> Self {
-        Model::new(std::fs::read(file).unwrap(), texture, animation_mapping)
+        Model::new(
+            std::fs::read(file).unwrap(),
+            texture,
+            animation_mapping,
+            item_mapping,
+        )
     }
-    pub fn new(data: Vec<u8>, texture: AtlassedTexture, animation_mapping: Vec<String>) -> Self {
+    pub fn new(
+        data: Vec<u8>,
+        texture: AtlassedTexture,
+        animation_mapping: Vec<String>,
+        item_mapping: Vec<String>,
+    ) -> Self {
         let mut data = data.as_slice();
-        let root_bone = Bone::from_stream(&mut data);
+        let root_bone = Bone::from_stream(&mut data, &item_mapping);
         let animations = {
             let animations_cnt: u32 = data.read_be().unwrap();
             let mut animations = Vec::with_capacity(animations_cnt as usize);
@@ -57,6 +74,7 @@ impl Model {
             animations,
             texture,
             animation_mapping,
+            item_mapping,
         }
     }
     pub fn add_vertices<F>(
@@ -67,6 +85,7 @@ impl Model {
         rotation: Vec3,
         rotation_origin: Vec3,
         scale: Vec3,
+        item_rendering: Option<(&HashMap<u32, ItemSlot>, &ItemRenderer)>,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
@@ -90,6 +109,7 @@ impl Model {
                 )
                 * Mat4::from_translation(position),
             &self.texture,
+            item_rendering,
         );
     }
     pub fn add_vertices_simple<F>(
@@ -97,6 +117,7 @@ impl Model {
         vertex_consumer: &mut F,
         animation: Option<(String, f32)>,
         position: Vec3,
+        item_rendering: Option<(&HashMap<u32, ItemSlot>, &ItemRenderer)>,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
@@ -116,6 +137,7 @@ impl Model {
             animation_id.map(|id| (id.0, id.1 % animation_length)),
             Mat4::from_translation(position),
             &self.texture,
+            item_rendering,
         );
     }
 }
@@ -125,35 +147,59 @@ struct Bone {
     cube_elements: Vec<CubeElement>,
     animations: BTreeMap<u32, AnimationData>,
     origin: Vec3,
+    name: String,
+    item_mapping: Vec<(u32, ItemElement)>,
 }
 impl Bone {
-    pub fn from_stream(data: &mut &[u8]) -> Self {
+    pub fn from_stream(data: &mut &[u8], item_mapping: &Vec<String>) -> Self {
+        let name = util::read_string(data);
+        let origin = from_stream_to_vec3(data);
+        let child_bones = {
+            let child_bones_cnt: u32 = data.read_be().unwrap();
+            let mut child_bones = Vec::with_capacity(child_bones_cnt as usize);
+            for _ in 0..child_bones_cnt {
+                child_bones.push(Bone::from_stream(data, item_mapping));
+            }
+            child_bones
+        };
+        let cube_elements = {
+            let cube_elements_cnt: u32 = data.read_be().unwrap();
+            let mut cube_elements = Vec::with_capacity(cube_elements_cnt as usize);
+            for _ in 0..cube_elements_cnt {
+                cube_elements.push(CubeElement::from_stream(data));
+            }
+            cube_elements
+        };
+        let item_mapping = {
+            let item_elements_cnt: u32 = data.read_be().unwrap();
+            let mut items = Vec::new();
+            for _ in 0..item_elements_cnt {
+                let name = util::read_string(data);
+                let item_element = ItemElement::from_stream(data);
+                for (index, item) in item_mapping.iter().enumerate() {
+                    if item == &name {
+                        items.push((index as u32, item_element));
+                        break;
+                    }
+                }
+            }
+            items
+        };
+        let animations = {
+            let mut animation = BTreeMap::new();
+            let animations_cnt: u32 = data.read_be().unwrap();
+            for _ in 0..animations_cnt {
+                animation.insert(data.read_be().unwrap(), AnimationData::from_stream(data));
+            }
+            animation
+        };
         Bone {
-            origin: from_stream_to_vec3(data),
-            child_bones: {
-                let child_bones_cnt: u32 = data.read_be().unwrap();
-                let mut child_bones = Vec::with_capacity(child_bones_cnt as usize);
-                for _ in 0..child_bones_cnt {
-                    child_bones.push(Bone::from_stream(data));
-                }
-                child_bones
-            },
-            cube_elements: {
-                let cube_elements_cnt: u32 = data.read_be().unwrap();
-                let mut cube_elements = Vec::with_capacity(cube_elements_cnt as usize);
-                for _ in 0..cube_elements_cnt {
-                    cube_elements.push(CubeElement::from_stream(data));
-                }
-                cube_elements
-            },
-            animations: {
-                let mut animation = BTreeMap::new();
-                let animations_cnt: u32 = data.read_be().unwrap();
-                for _ in 0..animations_cnt {
-                    animation.insert(data.read_be().unwrap(), AnimationData::from_stream(data));
-                }
-                animation
-            },
+            item_mapping,
+            name,
+            origin,
+            child_bones,
+            cube_elements,
+            animations,
         }
     }
     pub fn add_vertices<F>(
@@ -162,6 +208,7 @@ impl Bone {
         animation: Option<(u32, f32)>,
         parent_matrix: Mat4,
         texture: &AtlassedTexture,
+        item_rendering: Option<(&HashMap<u32, ItemSlot>, &ItemRenderer)>,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
@@ -180,7 +227,13 @@ impl Bone {
         };
         let bone_matrix = parent_matrix * animation_matrix;
         for child in &self.child_bones {
-            child.add_vertices(vertex_consumer, animation, bone_matrix, texture);
+            child.add_vertices(
+                vertex_consumer,
+                animation,
+                bone_matrix,
+                texture,
+                item_rendering,
+            );
         }
         for cube in &self.cube_elements {
             Bone::create_cube(
@@ -197,6 +250,18 @@ impl Bone {
                     * Bone::create_rotation_matrix_with_origin(&cube.rotation, &cube.origin),
                 texture,
             );
+        }
+        if let Some(item_rendering) = item_rendering {
+            for id in &self.item_mapping {
+                if let Some(item) = item_rendering.0.get(&id.0) {
+                    item_rendering.1.add_vertices(
+                        vertex_consumer,
+                        item,
+                        &(bone_matrix * id.1.create_matrix()),
+                        &id.1.size,
+                    );
+                }
+            }
         }
     }
     fn create_rotation_matrix_with_origin(rotation: &Vec3, origin: &Vec3) -> Mat4 {
@@ -469,6 +534,37 @@ struct CubeElementFace {
     v2: f32,
 }
 #[derive(Clone)]
+struct ItemElement {
+    position: Vec3,
+    rotation: Vec3,
+    origin: Vec3,
+    size: Vec2,
+}
+impl ItemElement {
+    pub fn from_stream(data: &mut &[u8]) -> Self {
+        Self {
+            position: from_stream_to_vec3(data),
+            rotation: from_stream_to_vec3(data),
+            origin: from_stream_to_vec3(data),
+            size: from_stream_to_vec2(data),
+        }
+    }
+    pub fn create_matrix(&self) -> Mat4 {
+        Mat4::from_translation(Vec3 {
+            x: self.position.x,
+            y: self.position.y,
+            z: self.position.z,
+        }) * Bone::create_rotation_matrix_with_origin(
+            &Vec3 {
+                x: self.rotation.x,
+                y: self.rotation.y + 180f32.to_radians(),
+                z: self.rotation.z,
+            },
+            &self.origin,
+        )
+    }
+}
+#[derive(Clone)]
 struct AnimationData {
     position: Vec<AnimationKeyframe>,
     rotation: Vec<AnimationKeyframe>,
@@ -553,8 +649,58 @@ fn from_stream_to_vec3(data: &mut &[u8]) -> Vec3 {
         z: data.read_be().unwrap(),
     }
 }
+fn from_stream_to_vec2(data: &mut &[u8]) -> Vec2 {
+    Vec2 {
+        x: data.read_be().unwrap(),
+        y: data.read_be().unwrap(),
+    }
+}
 #[derive(Clone)]
 struct Animation {
     name: String,
     length: f32,
+}
+
+pub struct ItemRenderer<'a> {
+    pub items: &'a HashMap<u32, ItemRenderData>,
+    pub texture_atlas: &'a TextureAtlas,
+}
+impl<'a> ItemRenderer<'a> {
+    pub fn add_vertices<F>(
+        &self,
+        vertex_consumer: &mut F,
+        item: &ItemSlot,
+        transformation: &Mat4,
+        scale: &Vec2,
+    ) where
+        F: FnMut(Vec3, f32, f32),
+    {
+        let render_data = self.items.get(&item.item).unwrap();
+        println!("rendering: {}", render_data.name);
+        match &render_data.model {
+            util::ItemModel::Texture(texture) => {
+                println!("rendering_texture: {}", texture);
+                let texture = self.texture_atlas.get(texture);
+                Bone::create_face(
+                    vertex_consumer,
+                    *transformation * Vec4::new(0., 0., 0., 1.),
+                    Corner::DownLeft,
+                    *transformation * Vec4::new(0., 0., 1., 1.),
+                    Corner::UpLeft,
+                    *transformation * Vec4::new(1., 0., 1., 1.),
+                    Corner::UpRight,
+                    *transformation * Vec4::new(1., 0., 0., 1.),
+                    Corner::DownRight,
+                    &CubeElementFace {
+                        u1: 0.,
+                        v1: 0.,
+                        u2: 1.,
+                        v2: 1.,
+                    },
+                    texture,
+                );
+            }
+            util::ItemModel::Block(_) => {}
+        }
+    }
 }

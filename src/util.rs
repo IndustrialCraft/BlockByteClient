@@ -35,7 +35,7 @@ pub enum NetworkMessageS2C {
     GuiData(json::JsonValue) = 6,
     BlockBreakTimeResponse(u32, f32) = 7,
     EntityAddItem(u32, u32, u32) = 8,
-    BlockAddItem(i32, i32, i32, f32, f32, f32, u32, u32) = 9,
+    BlockAddItem(i32, i32, i32, u32, u32) = 9,
     BlockRemoveItem(i32, i32, i32, u32) = 10,
     BlockMoveItem(i32, i32, i32, f32, f32, f32, u32) = 11,
     Knockback(f32, f32, f32, bool) = 12,
@@ -139,9 +139,6 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             9 => Some(Self::BlockAddItem(
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
@@ -327,6 +324,13 @@ impl Corner {
             Self::DownRight => (coords.2, coords.3),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+pub struct ItemSlot {
+    pub item: u32,
+    pub count: u16,
+    pub bar: Option<(f32, f32, f32, f32)>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

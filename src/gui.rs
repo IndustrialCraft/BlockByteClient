@@ -15,7 +15,7 @@ use ultraviolet::Vec3;
 use crate::{
     game::{self, AtlassedTexture, BlockRegistry},
     glwrappers,
-    util::{ItemModel, ItemRenderData, NetworkMessageC2S},
+    util::{ItemModel, ItemRenderData, ItemSlot, NetworkMessageC2S},
     TextureAtlas,
 };
 
@@ -661,7 +661,7 @@ impl<'a> GUI<'a> {
             texture_atlas,
             elements: HashMap::new(),
             sdl,
-            mouse_locked: false,
+            mouse_locked: true,
             size,
             window,
             block_registry,
@@ -1022,14 +1022,6 @@ pub struct Color {
     pub b: f32,
     pub a: f32,
 }
-
-#[derive(Clone, Copy)]
-pub struct ItemSlot {
-    item: u32,
-    count: u16,
-    bar: Option<(f32, f32, f32, f32)>,
-}
-
 pub struct ChatRenderer {
     messages: Vec<String>,
     current_writing_message: String,

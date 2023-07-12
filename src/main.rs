@@ -43,6 +43,7 @@ use image::EncodableLayout;
 use image::Rgba;
 use image::RgbaImage;
 use json::JsonValue;
+use model::ItemRenderer;
 use model::Model;
 use ogl33::c_char;
 use ogl33::c_void;
@@ -116,7 +117,7 @@ fn main() {
     {
         window
             .borrow_mut()
-            .set_icon(Surface::from_file(assets.as_os_str()).unwrap());
+            .set_icon(Surface::from_file(assets.as_os_str()).expect("icon not found"));
     }
     assets.pop();
     let (texture_atlas, packed_texture, font) = {
@@ -189,6 +190,7 @@ fn main() {
                             .get(model["texture"].as_str().unwrap())
                             .clone(),
                         Vec::new(),
+                        Vec::new(),
                     ),
                     model["north"].as_bool().unwrap_or(false),
                     model["south"].as_bool().unwrap_or(false),
@@ -247,6 +249,10 @@ fn main() {
                             .members()
                             .map(|animation| animation.as_str().unwrap().to_string())
                             .collect(),
+                        dynamic["items"]
+                            .members()
+                            .map(|item| item.as_str().unwrap().to_string())
+                            .collect(),
                     ))
                 }
             };
@@ -295,6 +301,15 @@ fn main() {
                             }
                             animations
                         },
+                        {
+                            let mut items = Vec::new();
+                            if !entity["items"].is_null() {
+                                for item in entity["items"].members() {
+                                    items.push(item.as_str().unwrap().to_string());
+                                }
+                            }
+                            items
+                        },
                     ),
                     entity_render_data,
                 ),
@@ -302,6 +317,7 @@ fn main() {
                     Model::new(
                         include_bytes!("missing.bbm").to_vec(),
                         texture_atlas.missing_texture.clone(),
+                        Vec::new(),
                         Vec::new(),
                     ),
                     entity_render_data,
@@ -419,6 +435,10 @@ fn main() {
         texture_atlas.get("breaking8").clone(),
         texture_atlas.get("breaking9").clone(),
     ]);
+    let item_renderer = ItemRenderer {
+        items: &item_registry,
+        texture_atlas: &texture_atlas,
+    };
     let mut fps = 0u32;
     let mut last_fps_cnt = 0u32;
     let mut last_fps_time = timer.ticks();
@@ -472,6 +492,7 @@ fn main() {
                                 animation,
                                 animation_time,
                             ) => {
+                                println!("added entity {}", id);
                                 entities.insert(
                                     id,
                                     game::Entity {
@@ -487,6 +508,7 @@ fn main() {
                                 );
                             }
                             NetworkMessageS2C::MoveEntity(id, x, y, z, rotation) => {
+                                //println!("moved entity {}", id);
                                 if let Some(entity) = entities.get_mut(&id) {
                                     entity.position.x = x;
                                     entity.position.y = y;
@@ -495,6 +517,7 @@ fn main() {
                                 }
                             }
                             NetworkMessageS2C::DeleteEntity(id) => {
+                                println!("deleted entity {}", id);
                                 entities.remove(&id);
                             }
                             NetworkMessageS2C::GuiData(data) => {
@@ -504,31 +527,41 @@ fn main() {
                                 block_breaking_manager.on_block_break_time_response(id, time);
                             }
                             NetworkMessageS2C::EntityAddItem(entity_id, item_index, item_id) => {
-                                entities
-                                    .get_mut(&entity_id)
-                                    .unwrap()
-                                    .items
-                                    .insert(item_index, item_id);
+                                entities.get_mut(&entity_id).unwrap().items.insert(
+                                    item_index,
+                                    ItemSlot {
+                                        item: item_id,
+                                        count: 1,
+                                        bar: None,
+                                    },
+                                );
                             }
-                            NetworkMessageS2C::BlockAddItem(
-                                x,
-                                y,
-                                z,
-                                x_offset,
-                                y_offset,
-                                z_offset,
-                                item_index,
-                                item_id,
-                            ) => {
+                            NetworkMessageS2C::BlockAddItem(x, y, z, item_index, item_id) => {
                                 let block_pos = BlockPosition { x, y, z };
-                                if !world.blocks_with_items.contains_key(&block_pos) {
+                                if let Some(mut chunk) =
+                                    world.get_mut_chunk(block_pos.to_chunk_pos())
+                                {
+                                    if let Some(dynamic_block) =
+                                        chunk.dynamic_blocks.get_mut(&block_pos)
+                                    {
+                                        dynamic_block.items.insert(
+                                            item_index,
+                                            ItemSlot {
+                                                item: item_id,
+                                                count: 1,
+                                                bar: None,
+                                            },
+                                        );
+                                    }
+                                }
+                                /*if !world.blocks_with_items.contains_key(&block_pos) {
                                     world.blocks_with_items.insert(block_pos, HashMap::new());
                                 }
                                 world
                                     .blocks_with_items
                                     .get_mut(&block_pos)
                                     .unwrap()
-                                    .insert(item_index, (x_offset, y_offset, z_offset, item_id));
+                                    .insert(item_index, (x_offset, y_offset, z_offset, item_id));*/
                             }
                             NetworkMessageS2C::BlockRemoveItem(x, y, z, item_index) => {
                                 if let Some(block_item_storage) =
@@ -589,6 +622,7 @@ fn main() {
                                 camera.velocity = Vec3::new(0., 0., 0.);
                             }
                             NetworkMessageS2C::TeleportPlayer(x, y, z) => {
+                                println!("teleport {} {} {}", x, y, z);
                                 camera.position.x = x;
                                 camera.position.y = y;
                                 camera.position.z = z;
@@ -957,7 +991,6 @@ fn main() {
                 0.01,
                 1000.,
             ) * camera.create_view_matrix();
-            let mut items_to_render_in_world = Vec::new();
             let mut models = Vec::new();
             for entity in &entities {
                 let model = entity_registry.get(&entity.1.entity_type).unwrap();
@@ -974,13 +1007,11 @@ fn main() {
                     },
                     &model.1,
                     entity.1.rotation,
+                    &entity.1.items,
                 ));
-                for item in &entity.1.items {
-                    items_to_render_in_world.push((entity.1.position.clone(), *item.1));
-                }
             }
-            for chunk in &world.chunks {
-                let chunk = chunk.1.borrow();
+            let chunks: Vec<_> = world.chunks.iter().map(|chunk| chunk.1.borrow()).collect();
+            for chunk in &chunks {
                 for block in &chunk.dynamic_blocks {
                     models.push((
                         block.0.to_position().add(0.5, 0., 0.5),
@@ -995,28 +1026,16 @@ fn main() {
                             None => panic!("non dynamic model was marked as dynamic"),
                         },
                         0.,
-                    ));
-                }
-            }
-            for block in &world.blocks_with_items {
-                for item in block.1 {
-                    items_to_render_in_world.push((
-                        Position {
-                            x: (block.0.x as f32) + item.1 .0,
-                            y: (block.0.y as f32) + item.1 .1,
-                            z: (block.0.z as f32) + item.1 .2,
-                        },
-                        item.1 .3,
+                        &block.1.items,
                     ));
                 }
             }
             world_entity_renderer.render(
-                items_to_render_in_world,
-                &item_registry,
                 &projection,
                 &texture_atlas,
                 &block_registry,
                 models,
+                &item_renderer,
             );
             particle_manager.tick(delta_time, &world, &block_registry);
             particle_manager.render(
@@ -1342,148 +1361,20 @@ impl WorldEntityRenderer {
     }
     pub fn render(
         &mut self,
-        items: Vec<(Position, u32)>,
-        item_registry: &HashMap<u32, ItemRenderData>,
         projection: &Mat4,
         texture_atlas: &TextureAtlas,
         block_registry: &BlockRegistry,
-        models: Vec<(Position, Option<(u32, f32)>, &model::Model, f32)>,
+        models: Vec<(
+            Position,
+            Option<(u32, f32)>,
+            &model::Model,
+            f32,
+            &HashMap<u32, ItemSlot>,
+        )>,
+        item_renderer: &ItemRenderer,
     ) {
         let mut vertices: Vec<glwrappers::BasicVertex> = Vec::new();
         let mut vertex_count = 0;
-        for item in &items {
-            let item_texture = &item_registry.get(&item.1).unwrap().model;
-            let position = &item.0;
-            match item_texture {
-                ItemModel::Texture(texture) => {
-                    let uv = texture_atlas.get(texture.as_str()).get_coords();
-                    WorldEntityRenderer::add_face(
-                        &mut vertices,
-                        position.x,
-                        position.y,
-                        position.z,
-                        position.x + 0.5,
-                        position.y,
-                        position.z,
-                        position.x + 0.5,
-                        position.y,
-                        position.z + 0.5,
-                        position.x,
-                        position.y,
-                        position.z + 0.5,
-                        uv,
-                    );
-                    vertex_count += 6;
-                }
-                ItemModel::Block(block) => {
-                    let block = block_registry.get_block(*block);
-                    match block.render_type {
-                        BlockRenderType::Air => {}
-                        BlockRenderType::Cube(_, north, south, right, left, up, down) => {
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x,
-                                position.y,
-                                position.z,
-                                position.x + 0.5,
-                                position.y,
-                                position.z,
-                                position.x + 0.5,
-                                position.y,
-                                position.z + 0.5,
-                                position.x,
-                                position.y,
-                                position.z + 0.5,
-                                down.get_coords(),
-                            );
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x,
-                                position.y + 0.5,
-                                position.z,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                position.x,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                up.get_coords(),
-                            );
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x,
-                                position.y + 0.5,
-                                position.z,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z,
-                                position.x + 0.5,
-                                position.y,
-                                position.z,
-                                position.x,
-                                position.y,
-                                position.z,
-                                north.get_coords(),
-                            );
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                position.x + 0.5,
-                                position.y,
-                                position.z + 0.5,
-                                position.x,
-                                position.y,
-                                position.z + 0.5,
-                                south.get_coords(),
-                            );
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x,
-                                position.y + 0.5,
-                                position.z,
-                                position.x,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                position.x,
-                                position.y,
-                                position.z + 0.5,
-                                position.x,
-                                position.y,
-                                position.z,
-                                left.get_coords(),
-                            );
-                            WorldEntityRenderer::add_face(
-                                &mut vertices,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z,
-                                position.x + 0.5,
-                                position.y + 0.5,
-                                position.z + 0.5,
-                                position.x + 0.5,
-                                position.y,
-                                position.z + 0.5,
-                                position.x + 0.5,
-                                position.y,
-                                position.z,
-                                right.get_coords(),
-                            );
-                            vertex_count += 6 * 6;
-                        }
-                        BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {}
-                        BlockRenderType::Foliage(_, _, _, _) => {}
-                    }
-                }
-            }
-        }
         for model in models {
             model.2.add_vertices(
                 &mut |pos, u, v| {
@@ -1495,6 +1386,7 @@ impl WorldEntityRenderer {
                 Vec3::new(0., (model.3 + 180.).to_radians(), 0.),
                 Vec3::new(0., 0., 0.),
                 Vec3::new(1., 1., 1.),
+                Some((model.4, item_renderer)),
             );
         }
         self.vao.bind();

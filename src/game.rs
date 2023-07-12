@@ -334,6 +334,7 @@ impl AABB {
 pub struct DynamicBlockData {
     pub id: u32,
     pub animation: Option<(u32, f32)>,
+    pub items: HashMap<u32, ItemSlot>,
 }
 
 pub struct Chunk<'a> {
@@ -396,6 +397,7 @@ impl<'a> Chunk<'a> {
                             DynamicBlockData {
                                 id,
                                 animation: None,
+                                items: HashMap::new(),
                             },
                         );
                     }
@@ -588,6 +590,7 @@ impl<'a> Chunk<'a> {
                 DynamicBlockData {
                     id: block_type,
                     animation: None,
+                    items: HashMap::new(),
                 },
             );
         }
@@ -887,6 +890,7 @@ impl<'a> Chunk<'a> {
                                             y: by as f32,
                                             z: bz as f32,
                                         },
+                                        None,
                                     );
                                 }
                             }
@@ -909,6 +913,7 @@ impl<'a> Chunk<'a> {
                                     y: by as f32,
                                     z: bz as f32,
                                 },
+                                None,
                             );
                         }
                         BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
@@ -1143,7 +1148,9 @@ impl<'a> Chunk<'a> {
             );
             self.transparent_vao.bind();
             unsafe {
+                ogl33::glDisable(ogl33::GL_CULL_FACE);
                 ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
+                ogl33::glEnable(ogl33::GL_CULL_FACE);
             }
         }
     }
@@ -1659,7 +1666,7 @@ pub struct Entity {
     pub entity_type: u32,
     pub position: Position,
     pub rotation: f32,
-    pub items: HashMap<u32, u32>,
+    pub items: HashMap<u32, ItemSlot>,
     pub animation: Option<(u32, f32)>,
 }
 pub struct ParticleManager {
