@@ -130,9 +130,9 @@ impl<'a> ClientPlayer<'a> {
             }
         }
         move_vector *= self.speed;
-        move_vector /= 2.;
+        move_vector *= 5.;
 
-        let mut total_move = (move_vector + self.velocity) * (delta_time * 10f32);
+        let mut total_move = (move_vector + self.velocity) * delta_time;
 
         self.last_moved = move_vector.mag() > 0.;
 
@@ -207,17 +207,28 @@ impl<'a> ClientPlayer<'a> {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
-
-        //todo: change velocity based on delta_time
-        self.velocity.x *= 0.9;
-        self.velocity.y *= 0.98;
-        self.velocity.z *= 0.9;
+        let drag_coefficient = 0.02;
+        let drag = self.velocity
+            * self.velocity
+            * Vec3 {
+                x: Self::normalized_scalar(self.velocity.x),
+                y: Self::normalized_scalar(self.velocity.y),
+                z: Self::normalized_scalar(self.velocity.z),
+            }
+            * drag_coefficient;
+        self.velocity -= drag * delta_time;
         self.position += total_move;
         if self.movement_type == MovementType::Normal {
-            self.velocity.y -= delta_time * 3f32;
+            self.velocity.y -= delta_time * 9.81f32;
         }
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
+    }
+    fn normalized_scalar(value: f32) -> f32 {
+        if value == 0. {
+            return 0.;
+        }
+        value / value.abs()
     }
     fn collides_at(
         movement_type: MovementType,
