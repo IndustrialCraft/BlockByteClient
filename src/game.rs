@@ -207,13 +207,13 @@ impl<'a> ClientPlayer<'a> {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
-        let drag_coefficient = 0.02;
+        let drag_coefficient = 0.01;
         let drag = self.velocity
             * self.velocity
             * Vec3 {
-                x: Self::normalized_scalar(self.velocity.x),
-                y: Self::normalized_scalar(self.velocity.y),
-                z: Self::normalized_scalar(self.velocity.z),
+                x: 1f32.copysign(self.velocity.x),
+                y: 1f32.copysign(self.velocity.y),
+                z: 1f32.copysign(self.velocity.z),
             }
             * drag_coefficient;
         self.velocity -= drag * delta_time;
@@ -223,12 +223,6 @@ impl<'a> ClientPlayer<'a> {
         }
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
-    }
-    fn normalized_scalar(value: f32) -> f32 {
-        if value == 0. {
-            return 0.;
-        }
-        value / value.abs()
     }
     fn collides_at(
         movement_type: MovementType,
