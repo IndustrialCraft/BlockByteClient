@@ -1855,8 +1855,8 @@ impl SoundManager {
             sounds: Vec::new(),
         }
     }
-    pub fn load(&mut self, name: String, path: &Path) {
-        let reader = hound::WavReader::open(path).unwrap();
+    pub fn load(&mut self, name: String, data: Vec<u8>) {
+        let reader = hound::WavReader::new(data.as_slice()).unwrap();
         let frequency = reader.spec().sample_rate as i32;
         let samples: Vec<i16> = reader.into_samples().map(|s| s.unwrap()).collect();
         let buffer = self

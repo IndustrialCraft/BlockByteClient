@@ -40,6 +40,7 @@ use glwrappers::Vertex;
 use glwrappers::VertexArray;
 use image::DynamicImage;
 use image::EncodableLayout;
+use image::ImageBuffer;
 use image::Rgba;
 use image::RgbaImage;
 use json::JsonValue;
@@ -111,238 +112,24 @@ fn main() {
         ogl33::glClearColor(0.2, 0.3, 0.3, 1.0);
         ogl33::glViewport(0, 0, win_width as i32, win_height as i32)
     }
-    let mut sound_manager = SoundManager::new();
-    let mut assets = std::path::Path::new(args.next().unwrap().as_str()).to_path_buf();
-    assets.push("icon.png");
+    let assets = std::path::Path::new(args.next().unwrap().as_str()).to_path_buf();
+    let (
+        mut sound_manager,
+        texture_atlas,
+        packed_texture,
+        font,
+        block_registry,
+        entity_registry,
+        item_registry,
+    ) = load_assets(assets.as_path());
+    /*assets.push("icon.png");
     {
         window
             .borrow_mut()
             .set_icon(Surface::from_file(assets.as_os_str()).expect("icon not found"));
     }
-    assets.pop();
-    let (texture_atlas, packed_texture, font) = {
-        let mut textures_to_pack = Vec::new();
-        for asset in std::fs::read_dir(&assets).unwrap() {
-            let asset = asset.unwrap();
-            let name = asset.file_name();
-            if name.to_str().unwrap().ends_with(".png") {
-                textures_to_pack.push((
-                    name.to_str().unwrap().replace(".png", ""),
-                    asset.path().to_path_buf(),
-                ));
-            }
-            if name.to_str().unwrap().ends_with(".wav") {
-                sound_manager.load(
-                    name.to_str().unwrap().replace(".wav", ""),
-                    asset.path().as_path(),
-                );
-            }
-        }
-        let font = {
-            assets.push("font.ttf");
-            let font = rusttype::Font::try_from_vec(std::fs::read(&assets).unwrap()).unwrap();
-            assets.pop();
-            font
-        };
-        let ret = pack_textures(textures_to_pack, &font);
-        (ret.0, ret.1, font)
-    };
-    let (block_registry, entity_registry, item_registry) = {
-        assets.push("content.json");
-        let content = json::parse(std::fs::read_to_string(&assets).unwrap().as_str()).unwrap();
-        assets.pop();
+    assets.pop();*/
 
-        let mut block_registry = BlockRegistry { blocks: Vec::new() };
-        block_registry.blocks.insert(0, Block::new_air());
-        block_registry
-            .blocks
-            .resize(content["blocks"].len() + 1, Block::new_air());
-        for block in content["blocks"].members() {
-            let id = block["id"].as_u32().unwrap();
-            let model = &block["model"];
-            let render_type = match model["type"].as_str().unwrap() {
-                "air" => BlockRenderType::Air,
-                "cube" => BlockRenderType::Cube(
-                    model["transparent"].as_bool().unwrap_or(false),
-                    texture_atlas.get(model["north"].as_str().unwrap()).clone(),
-                    texture_atlas.get(model["south"].as_str().unwrap()).clone(),
-                    texture_atlas.get(model["right"].as_str().unwrap()).clone(),
-                    texture_atlas.get(model["left"].as_str().unwrap()).clone(),
-                    texture_atlas.get(model["up"].as_str().unwrap()).clone(),
-                    texture_atlas.get(model["down"].as_str().unwrap()).clone(),
-                ),
-                "static" => BlockRenderType::StaticModel(
-                    model["transparent"].as_bool().unwrap_or(false),
-                    Model::new(
-                        {
-                            match model["model"].as_str() {
-                                Some(model) => {
-                                    assets.push(model.to_string() + ".bbm");
-                                    let data = std::fs::read(&assets)
-                                        .unwrap_or(include_bytes!("missing.bbm").to_vec());
-                                    assets.pop();
-                                    data
-                                }
-                                None => include_bytes!("missing.bbm").to_vec(),
-                            }
-                        },
-                        texture_atlas
-                            .get(model["texture"].as_str().unwrap())
-                            .clone(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                    model["north"].as_bool().unwrap_or(false),
-                    model["south"].as_bool().unwrap_or(false),
-                    model["right"].as_bool().unwrap_or(false),
-                    model["left"].as_bool().unwrap_or(false),
-                    model["up"].as_bool().unwrap_or(false),
-                    model["down"].as_bool().unwrap_or(false),
-                    StaticBlockModelConnections {
-                        front: HashMap::new(),
-                        back: HashMap::new(),
-                        left: HashMap::new(),
-                        right: HashMap::new(),
-                        up: HashMap::new(),
-                        down: HashMap::new(),
-                    },
-                    model["foliage"].as_bool().unwrap_or(false),
-                ),
-                "foliage" => BlockRenderType::Foliage(
-                    model["texture1"]
-                        .as_str()
-                        .map(|t| texture_atlas.get(t).clone()),
-                    model["texture2"]
-                        .as_str()
-                        .map(|t| texture_atlas.get(t).clone()),
-                    model["texture3"]
-                        .as_str()
-                        .map(|t| texture_atlas.get(t).clone()),
-                    model["texture4"]
-                        .as_str()
-                        .map(|t| texture_atlas.get(t).clone()),
-                ),
-                _ => panic!("unknown render type {}", model["type"].as_str().unwrap()),
-            };
-            let dynamic = {
-                let dynamic = &model["dynamic"];
-                if dynamic.is_null() {
-                    None
-                } else {
-                    Some(Model::new(
-                        {
-                            match dynamic["model"].as_str() {
-                                Some(model) => {
-                                    assets.push(model.to_string() + ".bbm");
-                                    let data = std::fs::read(&assets)
-                                        .unwrap_or(include_bytes!("missing.bbm").to_vec());
-                                    assets.pop();
-                                    data
-                                }
-                                None => include_bytes!("missing.bbm").to_vec(),
-                            }
-                        },
-                        texture_atlas
-                            .get(dynamic["texture"].as_str().unwrap())
-                            .clone(),
-                        dynamic["animations"]
-                            .members()
-                            .map(|animation| animation.as_str().unwrap().to_string())
-                            .collect(),
-                        dynamic["items"]
-                            .members()
-                            .map(|item| item.as_str().unwrap().to_string())
-                            .collect(),
-                    ))
-                }
-            };
-            block_registry.blocks[id as usize] = Block {
-                render_data: model["render_data"].as_u8().unwrap_or(0),
-                render_type,
-                fluid: model["fluid"].as_bool().unwrap_or(false),
-                no_collision: model["no_collide"].as_bool().unwrap_or(false),
-                light: {
-                    let light = &model["light"];
-                    if !light.is_null() {
-                        (
-                            light[0].as_u8().unwrap().min(15),
-                            light[1].as_u8().unwrap().min(15),
-                            light[2].as_u8().unwrap().min(15),
-                        )
-                    } else {
-                        (0, 0, 0)
-                    }
-                },
-                dynamic,
-            };
-        }
-        let mut entity_registry: HashMap<u32, (EntityRenderData, model::Model)> = HashMap::new();
-        for entity in content["entities"].members() {
-            let id = entity["id"].as_u32().unwrap();
-            let entity_render_data = EntityRenderData {
-                model: entity["model"].as_str().unwrap().to_string(),
-                texture: entity["texture"].as_str().unwrap().to_string(),
-                hitbox_w: entity["hitboxW"].as_f32().unwrap(),
-                hitbox_h: entity["hitboxH"].as_f32().unwrap(),
-                hitbox_d: entity["hitboxD"].as_f32().unwrap(),
-            };
-            assets.push(&entity_render_data.model);
-            let model = match std::fs::read(assets.as_path()) {
-                Ok(data) => (
-                    Model::new(
-                        data,
-                        texture_atlas.get(&entity_render_data.texture).clone(),
-                        {
-                            let mut animations = Vec::new();
-                            if !entity["animations"].is_null() {
-                                for animation in entity["animations"].members() {
-                                    animations.push(animation.as_str().unwrap().to_string());
-                                }
-                            }
-                            animations
-                        },
-                        {
-                            let mut items = Vec::new();
-                            if !entity["items"].is_null() {
-                                for item in entity["items"].members() {
-                                    items.push(item.as_str().unwrap().to_string());
-                                }
-                            }
-                            items
-                        },
-                    ),
-                    entity_render_data,
-                ),
-                Err(_) => (
-                    Model::new(
-                        include_bytes!("missing.bbm").to_vec(),
-                        texture_atlas.missing_texture.clone(),
-                        Vec::new(),
-                        Vec::new(),
-                    ),
-                    entity_render_data,
-                ),
-            };
-            assets.pop();
-            entity_registry.insert(id, (model.1, model.0));
-        }
-        let mut item_registry: HashMap<u32, ItemRenderData> = HashMap::new();
-        for item in content["items"].members() {
-            let id = item["id"].as_u32().unwrap();
-            let item_render_data = ItemRenderData {
-                name: item["name"].as_str().unwrap().to_string(),
-                model: match item["modelType"].as_str().unwrap() {
-                    "texture" => {
-                        ItemModel::Texture(item["modelValue"].as_str().unwrap().to_string())
-                    }
-                    "block" => ItemModel::Block(item["modelValue"].as_u32().unwrap()),
-                    _ => unreachable!(),
-                },
-            };
-            item_registry.insert(id, item_render_data);
-        }
-        (block_registry, entity_registry, item_registry)
-    };
     let mut camera = game::ClientPlayer::at_position(
         ultraviolet::Vec3 {
             x: 0f32,
@@ -1217,7 +1004,7 @@ impl SkyRenderer {
     }
 }
 fn pack_textures(
-    textures: Vec<(String, std::path::PathBuf)>,
+    textures: Vec<(String, Vec<u8>)>,
     font: &rusttype::Font,
 ) -> (TextureAtlas, RgbaImage) {
     let mut texture_map = std::collections::HashMap::new();
@@ -1232,8 +1019,8 @@ fn pack_textures(
             trim: false,
             texture_extrusion: 0,
         });
-    for (name, path) in textures {
-        if let Ok(texture) = ImageImporter::import_from_file(path.as_path()) {
+    for (name, data) in textures {
+        if let Ok(texture) = ImageImporter::import_from_memory(data.as_slice()) {
             packer.pack_own(name, texture).unwrap();
         }
     }
@@ -1946,4 +1733,260 @@ impl BlockBreakingManager {
         }
         self.target_block = block;
     }
+}
+
+fn load_assets(
+    zip_path: &Path,
+) -> (
+    SoundManager,
+    TextureAtlas,
+    ImageBuffer<Rgba<u8>, Vec<u8>>,
+    rusttype::Font,
+    BlockRegistry,
+    HashMap<u32, (EntityRenderData, model::Model)>,
+    HashMap<u32, ItemRenderData>,
+) {
+    let mut zip =
+        zip::ZipArchive::new(std::fs::File::open(zip_path).expect("asset archive not found"))
+            .expect("asset archive invalid");
+    let mut sound_manager = SoundManager::new();
+    let mut textures_to_pack = Vec::new();
+    let mut models = HashMap::new();
+
+    let mut content = None;
+    let mut font = None;
+
+    for file in 0..zip.len() {
+        let mut file = zip.by_index(file).unwrap();
+        if !file.is_file() {
+            continue;
+        }
+        let mut data = Vec::new();
+        use std::io::Read;
+        file.read_to_end(&mut data).unwrap();
+        let name = file.name();
+        println!("name: {}", name);
+        if name.ends_with(".png") {
+            textures_to_pack.push((name.replace(".png", ""), data));
+            continue;
+        }
+        if name.ends_with(".wav") {
+            sound_manager.load(name.replace(".wav", ""), data);
+            continue;
+        }
+        if name.ends_with(".bbm") {
+            models.insert(name.replace(".bbm", ""), data);
+            continue;
+        }
+        if name == "content.json" {
+            content = Some(json::parse(String::from_utf8(data).unwrap().as_str()).unwrap());
+            continue;
+        }
+        if name == "font.ttf" {
+            font = Some(rusttype::Font::try_from_vec(data).unwrap());
+            continue;
+        }
+    }
+    let font = font.unwrap();
+    let (texture_atlas, texture) = pack_textures(textures_to_pack, &font);
+    let content = load_content(content.unwrap(), &texture_atlas, models);
+    (
+        sound_manager,
+        texture_atlas,
+        texture,
+        font,
+        content.0,
+        content.1,
+        content.2,
+    )
+}
+fn load_content(
+    content: JsonValue,
+    texture_atlas: &TextureAtlas,
+    models: HashMap<String, Vec<u8>>,
+) -> (
+    BlockRegistry,
+    HashMap<u32, (EntityRenderData, model::Model)>,
+    HashMap<u32, ItemRenderData>,
+) {
+    let mut block_registry = BlockRegistry { blocks: Vec::new() };
+    block_registry.blocks.insert(0, Block::new_air());
+    block_registry
+        .blocks
+        .resize(content["blocks"].len() + 1, Block::new_air());
+    for block in content["blocks"].members() {
+        let id = block["id"].as_u32().unwrap();
+        let model = &block["model"];
+        let render_type = match model["type"].as_str().unwrap() {
+            "air" => BlockRenderType::Air,
+            "cube" => BlockRenderType::Cube(
+                model["transparent"].as_bool().unwrap_or(false),
+                texture_atlas.get(model["north"].as_str().unwrap()).clone(),
+                texture_atlas.get(model["south"].as_str().unwrap()).clone(),
+                texture_atlas.get(model["right"].as_str().unwrap()).clone(),
+                texture_atlas.get(model["left"].as_str().unwrap()).clone(),
+                texture_atlas.get(model["up"].as_str().unwrap()).clone(),
+                texture_atlas.get(model["down"].as_str().unwrap()).clone(),
+            ),
+            "static" => BlockRenderType::StaticModel(
+                model["transparent"].as_bool().unwrap_or(false),
+                Model::new(
+                    {
+                        match model["model"].as_str() {
+                            Some(model) => models
+                                .get(model)
+                                .map(|data| data.clone())
+                                .unwrap_or(include_bytes!("missing.bbm").to_vec()),
+                            None => include_bytes!("missing.bbm").to_vec(),
+                        }
+                    },
+                    texture_atlas
+                        .get(model["texture"].as_str().unwrap())
+                        .clone(),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                model["north"].as_bool().unwrap_or(false),
+                model["south"].as_bool().unwrap_or(false),
+                model["right"].as_bool().unwrap_or(false),
+                model["left"].as_bool().unwrap_or(false),
+                model["up"].as_bool().unwrap_or(false),
+                model["down"].as_bool().unwrap_or(false),
+                StaticBlockModelConnections {
+                    front: HashMap::new(),
+                    back: HashMap::new(),
+                    left: HashMap::new(),
+                    right: HashMap::new(),
+                    up: HashMap::new(),
+                    down: HashMap::new(),
+                },
+                model["foliage"].as_bool().unwrap_or(false),
+            ),
+            "foliage" => BlockRenderType::Foliage(
+                model["texture1"]
+                    .as_str()
+                    .map(|t| texture_atlas.get(t).clone()),
+                model["texture2"]
+                    .as_str()
+                    .map(|t| texture_atlas.get(t).clone()),
+                model["texture3"]
+                    .as_str()
+                    .map(|t| texture_atlas.get(t).clone()),
+                model["texture4"]
+                    .as_str()
+                    .map(|t| texture_atlas.get(t).clone()),
+            ),
+            _ => panic!("unknown render type {}", model["type"].as_str().unwrap()),
+        };
+        let dynamic = {
+            let dynamic = &model["dynamic"];
+            if dynamic.is_null() {
+                None
+            } else {
+                Some(Model::new(
+                    {
+                        match dynamic["model"].as_str() {
+                            Some(model) => models
+                                .get(model)
+                                .map(|data| data.clone())
+                                .unwrap_or(include_bytes!("missing.bbm").to_vec()),
+                            None => include_bytes!("missing.bbm").to_vec(),
+                        }
+                    },
+                    texture_atlas
+                        .get(dynamic["texture"].as_str().unwrap())
+                        .clone(),
+                    dynamic["animations"]
+                        .members()
+                        .map(|animation| animation.as_str().unwrap().to_string())
+                        .collect(),
+                    dynamic["items"]
+                        .members()
+                        .map(|item| item.as_str().unwrap().to_string())
+                        .collect(),
+                ))
+            }
+        };
+        block_registry.blocks[id as usize] = Block {
+            render_data: model["render_data"].as_u8().unwrap_or(0),
+            render_type,
+            fluid: model["fluid"].as_bool().unwrap_or(false),
+            no_collision: model["no_collide"].as_bool().unwrap_or(false),
+            light: {
+                let light = &model["light"];
+                if !light.is_null() {
+                    (
+                        light[0].as_u8().unwrap().min(15),
+                        light[1].as_u8().unwrap().min(15),
+                        light[2].as_u8().unwrap().min(15),
+                    )
+                } else {
+                    (0, 0, 0)
+                }
+            },
+            dynamic,
+        };
+    }
+    let mut entity_registry: HashMap<u32, (EntityRenderData, model::Model)> = HashMap::new();
+    for entity in content["entities"].members() {
+        let id = entity["id"].as_u32().unwrap();
+        let entity_render_data = EntityRenderData {
+            model: entity["model"].as_str().unwrap().to_string(),
+            texture: entity["texture"].as_str().unwrap().to_string(),
+            hitbox_w: entity["hitboxW"].as_f32().unwrap(),
+            hitbox_h: entity["hitboxH"].as_f32().unwrap(),
+            hitbox_d: entity["hitboxD"].as_f32().unwrap(),
+        };
+        let model = match models.get(&entity_render_data.model) {
+            Some(data) => (
+                Model::new(
+                    data.clone(),
+                    texture_atlas.get(&entity_render_data.texture).clone(),
+                    {
+                        let mut animations = Vec::new();
+                        if !entity["animations"].is_null() {
+                            for animation in entity["animations"].members() {
+                                animations.push(animation.as_str().unwrap().to_string());
+                            }
+                        }
+                        animations
+                    },
+                    {
+                        let mut items = Vec::new();
+                        if !entity["items"].is_null() {
+                            for item in entity["items"].members() {
+                                items.push(item.as_str().unwrap().to_string());
+                            }
+                        }
+                        items
+                    },
+                ),
+                entity_render_data,
+            ),
+            None => (
+                Model::new(
+                    include_bytes!("missing.bbm").to_vec(),
+                    texture_atlas.missing_texture.clone(),
+                    Vec::new(),
+                    Vec::new(),
+                ),
+                entity_render_data,
+            ),
+        };
+        entity_registry.insert(id, (model.1, model.0));
+    }
+    let mut item_registry: HashMap<u32, ItemRenderData> = HashMap::new();
+    for item in content["items"].members() {
+        let id = item["id"].as_u32().unwrap();
+        let item_render_data = ItemRenderData {
+            name: item["name"].as_str().unwrap().to_string(),
+            model: match item["modelType"].as_str().unwrap() {
+                "texture" => ItemModel::Texture(item["modelValue"].as_str().unwrap().to_string()),
+                "block" => ItemModel::Block(item["modelValue"].as_u32().unwrap()),
+                _ => unreachable!(),
+            },
+        };
+        item_registry.insert(id, item_render_data);
+    }
+    (block_registry, entity_registry, item_registry)
 }
