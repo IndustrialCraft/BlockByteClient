@@ -117,7 +117,7 @@ impl<'a> ClientPlayer<'a> {
                         world,
                         self.shifting,
                     ) {
-                        self.velocity.y = 0.8;
+                        self.velocity.y = 5.5;
                     }
                 }
             }
@@ -207,7 +207,7 @@ impl<'a> ClientPlayer<'a> {
             total_move.z = 0.;
             self.velocity.z = 0.;
         }
-        let drag_coefficient = 0.01;
+        let drag_coefficient = 0.025;
         let drag = self.velocity
             * self.velocity
             * Vec3 {
@@ -219,7 +219,7 @@ impl<'a> ClientPlayer<'a> {
         self.velocity -= drag * delta_time;
         self.position += total_move;
         if self.movement_type == MovementType::Normal {
-            self.velocity.y -= delta_time * 9.81f32;
+            self.velocity.y -= delta_time * 15f32;
         }
         self.shifting_animation += (if self.shifting { 1. } else { -1. }) * delta_time * 4.;
         self.shifting_animation = self.shifting_animation.clamp(0., 0.5);
