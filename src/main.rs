@@ -1383,7 +1383,7 @@ impl WorldEntityRenderer {
                 },
                 model.1,
                 Vec3::new(model.0.x, model.0.y, model.0.z),
-                Vec3::new(0., (model.3 + 180.).to_radians(), 0.),
+                Vec3::new(0., model.3.to_radians(), 0.),
                 Vec3::new(0., 0., 0.),
                 Vec3::new(1., 1., 1.),
                 Some((model.4, item_renderer)),

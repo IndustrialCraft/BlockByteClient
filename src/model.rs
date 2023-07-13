@@ -102,12 +102,9 @@ impl Model {
         self.root_bone.add_vertices(
             vertex_consumer,
             animation_id.map(|id| (id.0, id.1 % animation_length)),
-            Mat4::from_nonuniform_scale(scale)
-                * Bone::create_rotation_matrix_with_origin(
-                    &rotation,
-                    &(rotation_origin + position),
-                )
-                * Mat4::from_translation(position),
+            Mat4::from_translation(position)
+                * Bone::create_rotation_matrix_with_origin(&rotation, &(rotation_origin))
+                * Mat4::from_nonuniform_scale(scale),
             &self.texture,
             item_rendering,
         );
@@ -215,13 +212,12 @@ impl Bone {
         let animation_data = animation.and_then(|id| self.animations.get(&id.0));
         let animation_matrix = if let Some(animation_data) = animation_data {
             let animation_data = animation_data.get_for_time(animation.unwrap().1);
-            Mat4::from_nonuniform_scale(animation_data.2)
-                * Bone::create_rotation_matrix_with_origin(&animation_data.1, &self.origin)
-                * Mat4::from_translation(Vec3 {
-                    x: -animation_data.0.x,
-                    y: animation_data.0.y,
-                    z: -animation_data.0.z,
-                })
+            Mat4::from_translation(Vec3 {
+                x: animation_data.0.x,
+                y: animation_data.0.y,
+                z: animation_data.0.z,
+            }) * Bone::create_rotation_matrix_with_origin(&animation_data.1, &self.origin)
+                * Mat4::from_nonuniform_scale(animation_data.2)
         } else {
             Mat4::identity()
         };
@@ -257,7 +253,12 @@ impl Bone {
                     item_rendering.1.add_vertices(
                         vertex_consumer,
                         item,
-                        &(bone_matrix * id.1.create_matrix()),
+                        &(bone_matrix
+                            * Bone::create_rotation_matrix_with_origin(
+                                &id.1.rotation,
+                                &id.1.origin,
+                            )),
+                        &id.1.position,
                         &id.1.size,
                     );
                 }
@@ -267,7 +268,7 @@ impl Bone {
     fn create_rotation_matrix_with_origin(rotation: &Vec3, origin: &Vec3) -> Mat4 {
         let translation = Mat4::from_translation(origin.clone());
         translation
-            * Mat4::from_euler_angles(rotation.x, rotation.y, rotation.z)
+            * Mat4::from_euler_angles(-rotation.x, -rotation.y, -rotation.z)
             * translation.inversed()
     }
     fn create_cube<F>(
@@ -403,7 +404,7 @@ impl Bone {
             Corner::UpRight,
             p100,
             Corner::DownRight,
-            south,
+            north,
             texture,
         );
         Bone::create_face(
@@ -416,7 +417,7 @@ impl Bone {
             Corner::UpRight,
             p011,
             Corner::UpLeft,
-            north,
+            south,
             texture,
         );
     }
@@ -549,20 +550,6 @@ impl ItemElement {
             size: from_stream_to_vec2(data),
         }
     }
-    pub fn create_matrix(&self) -> Mat4 {
-        Mat4::from_translation(Vec3 {
-            x: self.position.x,
-            y: self.position.y,
-            z: self.position.z,
-        }) * Bone::create_rotation_matrix_with_origin(
-            &Vec3 {
-                x: self.rotation.x,
-                y: self.rotation.y + 180f32.to_radians(),
-                z: self.rotation.z,
-            },
-            &self.origin,
-        )
-    }
 }
 #[derive(Clone)]
 struct AnimationData {
@@ -670,26 +657,25 @@ impl<'a> ItemRenderer<'a> {
         &self,
         vertex_consumer: &mut F,
         item: &ItemSlot,
-        transformation: &Mat4,
+        matrix: &Mat4,
+        position: &Vec3,
         scale: &Vec2,
     ) where
         F: FnMut(Vec3, f32, f32),
     {
         let render_data = self.items.get(&item.item).unwrap();
-        println!("rendering: {}", render_data.name);
         match &render_data.model {
             util::ItemModel::Texture(texture) => {
-                println!("rendering_texture: {}", texture);
                 let texture = self.texture_atlas.get(texture);
                 Bone::create_face(
                     vertex_consumer,
-                    *transformation * Vec4::new(0., 0., 0., 1.),
+                    *matrix * Vec4::new(position.x, position.y, position.z, 1.),
                     Corner::DownLeft,
-                    *transformation * Vec4::new(0., 0., 1., 1.),
+                    *matrix * Vec4::new(position.x, position.y, position.z + scale.y, 1.),
                     Corner::UpLeft,
-                    *transformation * Vec4::new(1., 0., 1., 1.),
+                    *matrix * Vec4::new(position.x + scale.x, position.y, position.z + scale.y, 1.),
                     Corner::UpRight,
-                    *transformation * Vec4::new(1., 0., 0., 1.),
+                    *matrix * Vec4::new(position.x + scale.x, position.y, position.z, 1.),
                     Corner::DownRight,
                     &CubeElementFace {
                         u1: 0.,
