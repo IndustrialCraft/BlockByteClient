@@ -236,6 +236,7 @@ fn main() {
     let mut particle_manager = game::ParticleManager::new();
     let mut fullscreen = false;
     let mut vsync = true;
+    let mut orthographic_projection = false;
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -614,6 +615,9 @@ fn main() {
                                     })
                                     .unwrap();
                             }
+                            if keycode == Keycode::F9 {
+                                orthographic_projection = !orthographic_projection;
+                            }
                             gui.chat.on_key(keycode, &mut socket);
                             if !gui.chat.is_active() {
                                 if keycode == Keycode::Escape {
@@ -725,14 +729,20 @@ fn main() {
             let projection_view_loc = chunk_shader
                 .get_uniform_location("projection_view\0")
                 .expect("transform uniform not found");
-            chunk_shader.set_uniform_matrix(
-                projection_view_loc,
+            let projection = if !orthographic_projection {
                 ultraviolet::projection::perspective_gl(
                     90f32.to_radians(),
                     (win_width as f32) / (win_height as f32),
                     0.01,
                     1000.,
-                ) * camera.create_view_matrix(),
+                )
+            } else {
+                let size = 50.;
+                ultraviolet::projection::orthographic_gl(-size, size, -size, size, 0.01, 1000.)
+            };
+            chunk_shader.set_uniform_matrix(
+                projection_view_loc,
+                projection * camera.create_view_matrix(),
             );
             let rendered_chunks = {
                 world.render(
