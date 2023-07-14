@@ -341,38 +341,16 @@ fn main() {
                                         );
                                     }
                                 }
-                                /*if !world.blocks_with_items.contains_key(&block_pos) {
-                                    world.blocks_with_items.insert(block_pos, HashMap::new());
-                                }
-                                world
-                                    .blocks_with_items
-                                    .get_mut(&block_pos)
-                                    .unwrap()
-                                    .insert(item_index, (x_offset, y_offset, z_offset, item_id));*/
                             }
                             NetworkMessageS2C::BlockRemoveItem(x, y, z, item_index) => {
-                                if let Some(block_item_storage) =
-                                    world.blocks_with_items.get_mut(&BlockPosition { x, y, z })
+                                let block_pos = BlockPosition { x, y, z };
+                                if let Some(mut chunk) =
+                                    world.get_mut_chunk(block_pos.to_chunk_pos())
                                 {
-                                    block_item_storage.remove(&item_index);
-                                }
-                            }
-                            NetworkMessageS2C::BlockMoveItem(
-                                x,
-                                y,
-                                z,
-                                x_offset,
-                                y_offset,
-                                z_offset,
-                                item_index,
-                            ) => {
-                                if let Some(block_item_storage) =
-                                    world.blocks_with_items.get_mut(&BlockPosition { x, y, z })
-                                {
-                                    if let Some(item) = block_item_storage.get_mut(&item_index) {
-                                        item.0 = x_offset;
-                                        item.1 = y_offset;
-                                        item.2 = z_offset;
+                                    if let Some(dynamic_block) =
+                                        chunk.dynamic_blocks.get_mut(&block_pos)
+                                    {
+                                        dynamic_block.items.remove(&item_index);
                                     }
                                 }
                             }
