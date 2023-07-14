@@ -17,6 +17,7 @@ use crate::{
 };
 use alto::{Alto, OutputDevice, Source};
 use hashbrown::HashSet;
+use indexmap::IndexMap;
 use json::JsonValue;
 use ogl33::GL_CULL_FACE;
 use rustc_hash::FxHashMap;
@@ -1153,9 +1154,7 @@ impl<'a> Chunk<'a> {
             );
             self.transparent_vao.bind();
             unsafe {
-                ogl33::glDisable(ogl33::GL_CULL_FACE);
                 ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
-                ogl33::glEnable(ogl33::GL_CULL_FACE);
             }
         }
     }
@@ -1426,14 +1425,14 @@ impl AtlassedTexture {
 }
 
 pub struct World<'a> {
-    pub chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
+    pub chunks: IndexMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
     block_registry: &'a BlockRegistry,
     pub light_updates: BTreeSet<BlockPosition>,
 }
 impl<'a> World<'a> {
     pub fn new(block_registry: &'a BlockRegistry) -> Self {
         World {
-            chunks: FxHashMap::default(),
+            chunks: IndexMap::default(),
             block_registry,
             light_updates: BTreeSet::new(),
         }
@@ -1628,15 +1627,14 @@ impl<'a> World<'a> {
         let light_updates = self.update_lights() as i32;
         let mut rendered_chunks_stat = (0, 0, 0, self.chunks.len() as i32, light_updates);
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
-        let mut rendered_chunks = Vec::new();
         for chunk in self.chunks.values() {
-            let pos = { chunk.borrow().position.clone() };
-            chunk.borrow_mut().render(
+            let mut borrowed_chunk = chunk.borrow_mut();
+            let pos = borrowed_chunk.position.clone();
+            borrowed_chunk.render(
                 shader,
                 player_position.distance_squared(&pos) < 64,
                 &mut rendered_chunks_stat,
             );
-            rendered_chunks.push(chunk);
         }
         /*rendered_chunks.sort_by(|a, b| {
             let a = a.borrow();
@@ -1648,16 +1646,15 @@ impl<'a> World<'a> {
         unsafe {
             ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
             ogl33::glEnable(ogl33::GL_BLEND);
-            ogl33::glEnable(GL_CULL_FACE);
+            ogl33::glDisable(ogl33::GL_CULL_FACE);
         }
-        for chunk in rendered_chunks {
+        for chunk in self.chunks.values() {
             chunk
                 .borrow()
                 .render_transparent(shader, &mut rendered_chunks_stat);
         }
         unsafe {
             ogl33::glDisable(ogl33::GL_BLEND);
-            ogl33::glDisable(GL_CULL_FACE);
         }
         rendered_chunks_stat
     }
