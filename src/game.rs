@@ -1427,7 +1427,6 @@ impl AtlassedTexture {
 
 pub struct World<'a> {
     pub chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
-    pub blocks_with_items: HashMap<BlockPosition, HashMap<u32, (f32, f32, f32, u32)>>,
     block_registry: &'a BlockRegistry,
     pub light_updates: BTreeSet<BlockPosition>,
 }
@@ -1436,7 +1435,6 @@ impl<'a> World<'a> {
         World {
             chunks: FxHashMap::default(),
             block_registry,
-            blocks_with_items: HashMap::new(),
             light_updates: BTreeSet::new(),
         }
     }
@@ -1488,8 +1486,6 @@ impl<'a> World<'a> {
             }
         }
         self.chunks.remove(&position);
-        self.blocks_with_items
-            .drain_filter(|pos, _| pos.to_chunk_pos() == position);
     }
     pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk<'a>>> {
         match self.chunks.get(&position) {
@@ -1503,7 +1499,6 @@ impl<'a> World<'a> {
             .map(|chunk| chunk.borrow_mut())
     }
     pub fn set_block(&mut self, position: BlockPosition, id: u32) -> Result<(), ()> {
-        self.blocks_with_items.remove(&position);
         let chunk_position = position.to_chunk_pos();
         let offset = position.chunk_offset();
         if offset.0 == 0 {
