@@ -279,7 +279,6 @@ fn main() {
                                 animation,
                                 animation_time,
                             ) => {
-                                println!("added entity {}", id);
                                 entities.insert(
                                     id,
                                     game::Entity {
@@ -295,7 +294,6 @@ fn main() {
                                 );
                             }
                             NetworkMessageS2C::MoveEntity(id, x, y, z, rotation) => {
-                                //println!("moved entity {}", id);
                                 if let Some(entity) = entities.get_mut(&id) {
                                     entity.position.x = x;
                                     entity.position.y = y;
@@ -304,7 +302,6 @@ fn main() {
                                 }
                             }
                             NetworkMessageS2C::DeleteEntity(id) => {
-                                println!("deleted entity {}", id);
                                 entities.remove(&id);
                             }
                             NetworkMessageS2C::GuiData(data) => {
