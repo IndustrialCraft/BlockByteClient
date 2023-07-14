@@ -37,7 +37,6 @@ pub enum NetworkMessageS2C {
     EntityAddItem(u32, u32, u32) = 8,
     BlockAddItem(i32, i32, i32, u32, u32) = 9,
     BlockRemoveItem(i32, i32, i32, u32) = 10,
-    BlockMoveItem(i32, i32, i32, f32, f32, f32, u32) = 11,
     Knockback(f32, f32, f32, bool) = 12,
     FluidSelectable(bool) = 13,
     PlaySound(String, f32, f32, f32, f32, f32, bool) = 14,
@@ -146,15 +145,6 @@ impl NetworkMessageS2C {
                 data.read_be().unwrap(),
             )),
             10 => Some(Self::BlockRemoveItem(
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
-            )),
-            11 => Some(Self::BlockMoveItem(
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
-                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
