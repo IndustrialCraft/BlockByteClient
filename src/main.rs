@@ -1228,67 +1228,60 @@ pub fn raycast(
         }
         if let Some(id) = world.get_block(position) {
             let block = block_registry.get_block(id);
-            if !(block.fluid && !fluid_selectable) {
-                match &block.render_type {
-                    BlockRenderType::Air => {}
-                    BlockRenderType::Cube(_, _, _, _, _, _, _)
-                    | BlockRenderType::Foliage(_, _, _, _)
-                    | BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _) => {
-                        let last_pos = last_pos.to_block_pos();
-                        let mut least_diff_face = Face::Up;
-                        for face in Face::all() {
-                            let offset = face.get_offset();
-                            let diff = (position.x - last_pos.x + offset.x).abs()
-                                + (position.y - last_pos.y + offset.y).abs()
-                                + (position.z - last_pos.z + offset.z).abs();
-                            if diff <= 1 {
-                                least_diff_face = face.clone();
-                            }
-                        }
-                        return Some(HitResult::Block(position, id, least_diff_face));
-                    } /* => {
-                          let x = ray_pos.x - (position.x as f32);
-                          let y = ray_pos.y - (position.y as f32);
-                          let z = ray_pos.z - (position.z as f32);
-                          for cube in &model.cubes {
-                              if x >= cube.from.x
-                                  && x <= cube.to.x
-                                  && y >= cube.from.y
-                                  && y <= cube.to.y
-                                  && z >= cube.from.z
-                                  && z <= cube.to.z
-                              {
-                                  let size = Position {
-                                      x: cube.to.x - cube.from.x,
-                                      y: cube.to.y - cube.from.y,
-                                      z: cube.to.z - cube.from.z,
-                                  };
-                                  let mut least_diff_face = Face::Up;
-                                  let mut least_diff = 10.;
-                                  for face in Face::all() {
-                                      let offset = face.get_offset();
-                                      let diff = (((x - cube.from.x) / size.x) - 0.5
-                                          + (offset.x as f32))
-                                          .abs()
-                                          + (((y - cube.from.y) / size.y) - 0.5 + (offset.y as f32))
-                                              .abs()
-                                          + (((z - cube.from.z) / size.z) - 0.5 + (offset.z as f32))
-                                              .abs();
-                                      if diff <= least_diff {
-                                          least_diff = diff;
-                                          least_diff_face = face.clone();
-                                      }
-                                  }
-                                  return Some(HitResult::Block(
-                                      position,
-                                      id,
-                                      least_diff_face.opposite(),
-                                  ));
+            if (!(block.fluid && !fluid_selectable)) && block.selectable {
+                let last_pos = last_pos.to_block_pos();
+                let mut least_diff_face = Face::Up;
+                for face in Face::all() {
+                    let offset = face.get_offset();
+                    let diff = (position.x - last_pos.x + offset.x).abs()
+                        + (position.y - last_pos.y + offset.y).abs()
+                        + (position.z - last_pos.z + offset.z).abs();
+                    if diff <= 1 {
+                        least_diff_face = face.clone();
+                    }
+                }
+                return Some(HitResult::Block(position, id, least_diff_face));
+            } /* => {
+                  let x = ray_pos.x - (position.x as f32);
+                  let y = ray_pos.y - (position.y as f32);
+                  let z = ray_pos.z - (position.z as f32);
+                  for cube in &model.cubes {
+                      if x >= cube.from.x
+                          && x <= cube.to.x
+                          && y >= cube.from.y
+                          && y <= cube.to.y
+                          && z >= cube.from.z
+                          && z <= cube.to.z
+                      {
+                          let size = Position {
+                              x: cube.to.x - cube.from.x,
+                              y: cube.to.y - cube.from.y,
+                              z: cube.to.z - cube.from.z,
+                          };
+                          let mut least_diff_face = Face::Up;
+                          let mut least_diff = 10.;
+                          for face in Face::all() {
+                              let offset = face.get_offset();
+                              let diff = (((x - cube.from.x) / size.x) - 0.5
+                                  + (offset.x as f32))
+                                  .abs()
+                                  + (((y - cube.from.y) / size.y) - 0.5 + (offset.y as f32))
+                                      .abs()
+                                  + (((z - cube.from.z) / size.z) - 0.5 + (offset.z as f32))
+                                      .abs();
+                              if diff <= least_diff {
+                                  least_diff = diff;
+                                  least_diff_face = face.clone();
                               }
                           }
-                      }*/
-                }
-            }
+                          return Some(HitResult::Block(
+                              position,
+                              id,
+                              least_diff_face.opposite(),
+                          ));
+                      }
+                  }
+              }*/
         }
         last_pos = ray_pos.clone();
         ray_pos = ray_pos.add(dir.x, dir.y, dir.z);
@@ -1897,6 +1890,7 @@ fn load_content(
             render_type,
             fluid: model["fluid"].as_bool().unwrap_or(false),
             no_collision: model["no_collide"].as_bool().unwrap_or(false),
+            selectable: model["selectable"].as_bool().unwrap_or(true),
             light: {
                 let light = &model["light"];
                 if !light.is_null() {

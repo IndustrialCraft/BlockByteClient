@@ -1322,6 +1322,7 @@ pub struct Block {
     pub render_data: u8,
     pub fluid: bool,
     pub no_collision: bool,
+    pub selectable: bool,
     pub light: (u8, u8, u8),
 }
 impl Block {
@@ -1333,6 +1334,7 @@ impl Block {
             fluid: false,
             no_collision: true,
             light: (0, 0, 0),
+            selectable: false,
         }
     }
     pub fn is_light_emmiting(&self) -> bool {
