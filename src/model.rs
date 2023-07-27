@@ -489,6 +489,68 @@ impl Bone {
         vertex_consumer.call_mut(v4);
         vertex_consumer.call_mut(v1);
     }
+    fn create_face_uv<F>(
+        vertex_consumer: &mut F,
+        p1: Vec4,
+        uv1: (f32, f32),
+        p2: Vec4,
+        uv2: (f32, f32),
+        p3: Vec4,
+        uv3: (f32, f32),
+        p4: Vec4,
+        uv4: (f32, f32),
+        uv: &AtlassedTexture,
+    ) where
+        F: FnMut(Vec3, f32, f32),
+    {
+        let uv1 = uv.map_uv(uv1);
+        let uv2 = uv.map_uv(uv2);
+        let uv3 = uv.map_uv(uv3);
+        let uv4 = uv.map_uv(uv4);
+
+        let v1 = (
+            Vec3 {
+                x: p1.x,
+                y: p1.y,
+                z: p1.z,
+            },
+            uv1.0,
+            uv1.1,
+        );
+        let v2 = (
+            Vec3 {
+                x: p2.x,
+                y: p2.y,
+                z: p2.z,
+            },
+            uv2.0,
+            uv2.1,
+        );
+        let v3 = (
+            Vec3 {
+                x: p3.x,
+                y: p3.y,
+                z: p3.z,
+            },
+            uv3.0,
+            uv3.1,
+        );
+        let v4 = (
+            Vec3 {
+                x: p4.x,
+                y: p4.y,
+                z: p4.z,
+            },
+            uv4.0,
+            uv4.1,
+        );
+        vertex_consumer.call_mut(v1);
+        vertex_consumer.call_mut(v2);
+        vertex_consumer.call_mut(v3);
+        vertex_consumer.call_mut(v3);
+        vertex_consumer.call_mut(v4);
+        vertex_consumer.call_mut(v1);
+    }
 }
 #[derive(Clone)]
 struct CubeElement {
@@ -666,7 +728,6 @@ impl<'a> ItemRenderer<'a> {
         let render_data = self.items.get(&item.item).unwrap();
         match &render_data.model {
             util::ItemModel::Texture(texture) => {
-                let texture = self.texture_atlas.get(texture);
                 Bone::create_face(
                     vertex_consumer,
                     *matrix * Vec4::new(position.x, position.y, position.z, 1.),
@@ -683,8 +744,56 @@ impl<'a> ItemRenderer<'a> {
                         u2: 1.,
                         v2: 1.,
                     },
-                    texture,
+                    &texture.texture,
                 );
+                let depth = 0.02;
+                Bone::create_face(
+                    vertex_consumer,
+                    *matrix * Vec4::new(position.x, position.y + depth, position.z, 1.),
+                    Corner::DownLeft,
+                    *matrix * Vec4::new(position.x, position.y + depth, position.z + scale.y, 1.),
+                    Corner::UpLeft,
+                    *matrix
+                        * Vec4::new(
+                            position.x + scale.x,
+                            position.y + depth,
+                            position.z + scale.y,
+                            1.,
+                        ),
+                    Corner::UpRight,
+                    *matrix * Vec4::new(position.x + scale.x, position.y + depth, position.z, 1.),
+                    Corner::DownRight,
+                    &CubeElementFace {
+                        u1: 0.,
+                        v1: 0.,
+                        u2: 1.,
+                        v2: 1.,
+                    },
+                    &texture.texture,
+                );
+                for side in &texture.side_faces {
+                    let (x1, y1, x2, y2) = (
+                        side.x1 * scale.x,
+                        side.y1 * scale.y,
+                        side.x2 * scale.x,
+                        side.y2 * scale.y,
+                    );
+
+                    Bone::create_face_uv(
+                        vertex_consumer,
+                        *matrix
+                            * Vec4::new(position.x + x1, position.y + depth, position.z + y1, 1.),
+                        (side.u, 1. - side.v),
+                        *matrix * Vec4::new(position.x + x1, position.y, position.z + y1, 1.),
+                        (side.u, 1. - side.v),
+                        *matrix * Vec4::new(position.x + x2, position.y, position.z + y2, 1.),
+                        (side.u, 1. - side.v),
+                        *matrix
+                            * Vec4::new(position.x + x2, position.y + depth, position.z + y2, 1.),
+                        (side.u, 1. - side.v),
+                        &texture.texture,
+                    );
+                }
             }
             util::ItemModel::Block(_) => {}
         }

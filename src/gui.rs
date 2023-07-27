@@ -443,7 +443,7 @@ impl GUIComponent {
                             GUIComponent::ImageComponent(
                                 size,
                                 size,
-                                texture_atlas.get(texture).clone(),
+                                texture.texture.clone(),
                                 Color {
                                     r: 1.,
                                     g: 1.,

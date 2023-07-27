@@ -1767,7 +1767,7 @@ fn load_assets(
     }
     let font = font.unwrap();
     let (texture_atlas, texture) = pack_textures(textures_to_pack, &font);
-    let content = load_content(content.unwrap(), &texture_atlas, models);
+    let content = load_content(content.unwrap(), &texture_atlas, &texture, models);
     (
         sound_manager,
         texture_atlas,
@@ -1781,6 +1781,7 @@ fn load_assets(
 fn load_content(
     content: JsonValue,
     texture_atlas: &TextureAtlas,
+    texture: &RgbaImage,
     models: HashMap<String, Vec<u8>>,
 ) -> (
     BlockRegistry,
@@ -1960,7 +1961,10 @@ fn load_content(
         let item_render_data = ItemRenderData {
             name: item["name"].as_str().unwrap().to_string(),
             model: match item["modelType"].as_str().unwrap() {
-                "texture" => ItemModel::Texture(item["modelValue"].as_str().unwrap().to_string()),
+                "texture" => ItemModel::build_texture(
+                    texture_atlas.get(item["modelValue"].as_str().unwrap()),
+                    texture,
+                ),
                 "block" => ItemModel::Block(item["modelValue"].as_u32().unwrap()),
                 _ => unreachable!(),
             },

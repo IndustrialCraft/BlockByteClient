@@ -3,8 +3,11 @@ use endio::LEWrite;
 
 use enum_iterator::Sequence;
 
+use image::RgbaImage;
 use json::JsonValue;
 use ultraviolet::*;
+
+use crate::game::AtlassedTexture;
 
 pub struct BlockRenderData {
     pub json: JsonValue,
@@ -20,9 +23,103 @@ pub struct ItemRenderData {
     pub name: String,
     pub model: ItemModel,
 }
+pub struct ItemTexture {
+    pub texture: AtlassedTexture,
+    pub side_faces: Vec<ItemTextureSideFace>,
+}
+#[derive(Debug)]
+pub struct ItemTextureSideFace {
+    pub x1: f32,
+    pub y1: f32,
+    pub x2: f32,
+    pub y2: f32,
+    pub u: f32,
+    pub v: f32,
+}
 pub enum ItemModel {
-    Texture(String),
+    Texture(ItemTexture),
     Block(u32),
+}
+impl ItemModel {
+    pub fn build_texture(texture: &AtlassedTexture, image: &RgbaImage) -> ItemModel {
+        let width_inverse = 1f32 / texture.w as f32;
+        let height_inverse = 1f32 / texture.h as f32;
+        let mut sides = Vec::new();
+        let mut pixels = Vec::with_capacity((texture.w * texture.h) as usize);
+        for y in 0..texture.h {
+            for x in 0..texture.w {
+                pixels.push(
+                    image
+                        .get_pixel(x + texture.x, (texture.w - y - 1) + texture.y)
+                        .0[3]
+                        >= 204,
+                );
+            }
+        }
+        //todo: merge pixels next to each other
+        for y in 0..texture.h {
+            for x in 0..texture.w {
+                let x = x as i32;
+                let y = y as i32;
+                if Self::is_pixel_full(&pixels, x, y, texture.w, texture.h) {
+                    let world_x = x as f32 / texture.w as f32;
+                    let world_y = y as f32 / texture.h as f32;
+                    //todo: wrapping add
+                    if !Self::is_pixel_full(&pixels, x, y - 1, texture.w, texture.h) {
+                        sides.push(ItemTextureSideFace {
+                            x1: world_x,
+                            y1: world_y,
+                            x2: world_x + width_inverse,
+                            y2: world_y,
+                            u: world_x + (width_inverse / 2.),
+                            v: world_y + (height_inverse / 2.),
+                        });
+                    }
+                    if !Self::is_pixel_full(&pixels, x, y + 1, texture.w, texture.h) {
+                        sides.push(ItemTextureSideFace {
+                            x1: world_x,
+                            y1: world_y + height_inverse,
+                            x2: world_x + width_inverse,
+                            y2: world_y + height_inverse,
+                            u: world_x + (width_inverse / 2.),
+                            v: world_y + (height_inverse / 2.),
+                        });
+                    }
+                    if !Self::is_pixel_full(&pixels, x - 1, y, texture.w, texture.h) {
+                        sides.push(ItemTextureSideFace {
+                            x1: world_x,
+                            y1: world_y,
+                            x2: world_x,
+                            y2: world_y + height_inverse,
+                            u: world_x + (width_inverse / 2.),
+                            v: world_y + (height_inverse / 2.),
+                        });
+                    }
+                    if !Self::is_pixel_full(&pixels, x + 1, y, texture.w, texture.h) {
+                        sides.push(ItemTextureSideFace {
+                            x1: world_x + width_inverse,
+                            y1: world_y,
+                            x2: world_x + width_inverse,
+                            y2: world_y + height_inverse,
+                            u: world_x + (width_inverse / 2.),
+                            v: world_y + (height_inverse / 2.),
+                        });
+                    }
+                }
+            }
+        }
+        ItemModel::Texture(ItemTexture {
+            texture: texture.clone(),
+            side_faces: sides,
+        })
+    }
+    fn is_pixel_full(pixels: &Vec<bool>, x: i32, y: i32, width: u32, height: u32) -> bool {
+        if x < 0 || y < 0 || x as u32 >= width || y as u32 >= height {
+            false
+        } else {
+            *pixels.get((x + (y * width as i32)) as usize).unwrap()
+        }
+    }
 }
 #[repr(u8)]
 pub enum NetworkMessageS2C {
