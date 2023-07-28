@@ -20,7 +20,7 @@ use hashbrown::HashSet;
 use indexmap::IndexMap;
 use json::JsonValue;
 use ogl33::GL_CULL_FACE;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use sdl2::keyboard::Keycode;
 use ultraviolet::*;
 use uuid::Uuid;
@@ -357,7 +357,6 @@ pub struct Chunk<'a> {
     foliage_vertex_count: u32,
     position: ChunkPosition,
     block_registry: &'a BlockRegistry,
-    modified: bool,
     front: Option<Rc<RefCell<Chunk<'a>>>>,
     back: Option<Rc<RefCell<Chunk<'a>>>>,
     left: Option<Rc<RefCell<Chunk<'a>>>>,
@@ -367,14 +366,14 @@ pub struct Chunk<'a> {
     pub dynamic_blocks: HashMap<BlockPosition, DynamicBlockData>,
 }
 impl<'a> Chunk<'a> {
-    fn set_neighbor_by_face(&mut self, face: &Face, chunk: Option<&Rc<RefCell<Chunk<'a>>>>) {
+    fn set_neighbor_by_face(&mut self, face: &Face, chunk: Option<Rc<RefCell<Chunk<'a>>>>) {
         match face {
-            Face::Front => self.front = chunk.map(|e| e.clone()),
-            Face::Back => self.back = chunk.map(|e| e.clone()),
-            Face::Left => self.left = chunk.map(|e| e.clone()),
-            Face::Right => self.right = chunk.map(|e| e.clone()),
-            Face::Up => self.up = chunk.map(|e| e.clone()),
-            Face::Down => self.down = chunk.map(|e| e.clone()),
+            Face::Front => self.front = chunk,
+            Face::Back => self.back = chunk,
+            Face::Left => self.left = chunk,
+            Face::Right => self.right = chunk,
+            Face::Up => self.up = chunk,
+            Face::Down => self.down = chunk,
         }
     }
     pub fn new(
@@ -565,7 +564,6 @@ impl<'a> Chunk<'a> {
             vertex_count: 0,
             position,
             block_registry,
-            modified: true,
             transparent_vbo,
             transparent_vao,
             transparent_vertex_count: 0,
@@ -581,7 +579,7 @@ impl<'a> Chunk<'a> {
             dynamic_blocks,
         }
     }
-    pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32) {
+    pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32, world: &mut World) {
         let position = BlockPosition {
             x: (self.position.x * 16) + x as i32,
             y: (self.position.y * 16) + y as i32,
@@ -589,7 +587,7 @@ impl<'a> Chunk<'a> {
         };
         self.dynamic_blocks.remove(&position);
         self.blocks[x as usize][y as usize][z as usize] = block_type;
-        self.modified = true;
+        world.chunk_mesh_updates.insert(self.position);
         if self.block_registry.get_block(block_type).dynamic.is_some() {
             self.dynamic_blocks.insert(
                 position,
@@ -601,8 +599,8 @@ impl<'a> Chunk<'a> {
             );
         }
     }
-    pub fn schedule_mesh_rebuild(&mut self) {
-        self.modified = true;
+    pub fn schedule_mesh_rebuild(&self, world: &mut World) {
+        world.chunk_mesh_updates.insert(self.position);
     }
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
         return self.blocks[x as usize][y as usize][z as usize];
@@ -616,7 +614,7 @@ impl<'a> Chunk<'a> {
             //((light >> 12) & 15) as u8,
         )
     }
-    fn rebuild_chunk_mesh(&mut self) -> bool {
+    fn rebuild_chunk_mesh(&mut self, this: Rc<RefCell<Chunk<'a>>>, world: &mut World<'a>) {
         if self.front.is_none()
             || self.back.is_none()
             || self.left.is_none()
@@ -624,7 +622,7 @@ impl<'a> Chunk<'a> {
             || self.up.is_none()
             || self.down.is_none()
         {
-            return false;
+            return;
         }
         let front_chunk = self.front.as_deref().unwrap().borrow();
         let back_chunk = self.back.as_deref().unwrap().borrow();
@@ -1092,7 +1090,17 @@ impl<'a> Chunk<'a> {
             bytemuck::cast_slice(&foliage_vertices),
             ogl33::GL_STATIC_DRAW,
         );
-        return true;
+
+        if self.vertex_count > 0 || self.foliage_vertex_count > 0 {
+            world.solid_chunks.insert(self.position, this.clone());
+        } else {
+            world.solid_chunks.remove(&self.position);
+        }
+        if self.transparent_vertex_count > 0 {
+            world.transparent_chunks.insert(self.position, this.clone());
+        } else {
+            world.transparent_chunks.remove(&self.position);
+        }
     }
     pub fn render(
         &mut self,
@@ -1100,10 +1108,11 @@ impl<'a> Chunk<'a> {
         render_foliage: bool,
         rendered_chunks_stat: &mut (i32, i32, i32, i32, i32),
     ) {
-        if self.modified {
+        /*if self.modified {
             self.modified = !self.rebuild_chunk_mesh();
-        }
-        if !self.modified {
+        }*/
+        if true {
+            /* !self.modified*/
             if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
                 shader.set_uniform_matrix(
                     shader
@@ -1430,6 +1439,9 @@ pub struct World<'a> {
     pub chunks: IndexMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
     block_registry: &'a BlockRegistry,
     pub light_updates: BTreeSet<BlockPosition>,
+    pub chunk_mesh_updates: FxHashSet<ChunkPosition>,
+    pub solid_chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
+    pub transparent_chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
 }
 impl<'a> World<'a> {
     pub fn new(block_registry: &'a BlockRegistry) -> Self {
@@ -1437,6 +1449,9 @@ impl<'a> World<'a> {
             chunks: IndexMap::default(),
             block_registry,
             light_updates: BTreeSet::new(),
+            chunk_mesh_updates: FxHashSet::default(),
+            solid_chunks: FxHashMap::default(),
+            transparent_chunks: FxHashMap::default(),
         }
     }
     pub fn load_chunk(
@@ -1452,17 +1467,23 @@ impl<'a> World<'a> {
                 self,
             )));
             self.chunks.insert(position, chunk.clone());
+            self.chunk_mesh_updates.insert(position);
             for face in Face::all() {
                 let offset = face.get_offset();
-                let neighbor = self.chunks.get(&position.add(offset.x, offset.y, offset.z));
+                let neighbor = self
+                    .chunks
+                    .get(&position.add(offset.x, offset.y, offset.z))
+                    .map(|chunk| chunk.clone());
                 {
-                    chunk.borrow_mut().set_neighbor_by_face(&face, neighbor);
+                    chunk
+                        .borrow_mut()
+                        .set_neighbor_by_face(&face, neighbor.clone());
                 }
                 {
                     if let Some(neighbor) = neighbor {
-                        neighbor
-                            .borrow_mut()
-                            .set_neighbor_by_face(&face.opposite(), Some(&chunk));
+                        let mut neighbor = neighbor.borrow_mut();
+                        neighbor.set_neighbor_by_face(&face.opposite(), Some(chunk.clone()));
+                        neighbor.schedule_mesh_rebuild(self);
                     }
                 }
             }
@@ -1487,10 +1508,18 @@ impl<'a> World<'a> {
             }
         }
         self.chunks.remove(&position);
+        self.solid_chunks.remove(&position);
+        self.transparent_chunks.remove(&position);
     }
     pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk<'a>>> {
         match self.chunks.get(&position) {
             Some(chunk) => Some(chunk.borrow()),
+            None => None,
+        }
+    }
+    pub fn get_chunk_clone(&self, position: ChunkPosition) -> Option<Rc<RefCell<Chunk<'a>>>> {
+        match self.chunks.get(&position) {
+            Some(chunk) => Some(chunk.clone()),
             None => None,
         }
     }
@@ -1503,39 +1532,41 @@ impl<'a> World<'a> {
         let chunk_position = position.to_chunk_pos();
         let offset = position.chunk_offset();
         if offset.0 == 0 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(-1, 0, 0)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(-1, 0, 0)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         if offset.0 == 15 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(1, 0, 0)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(1, 0, 0)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         if offset.1 == 0 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, -1, 0)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, -1, 0)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         if offset.1 == 15 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 1, 0)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 1, 0)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         if offset.2 == 0 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 0, -1)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 0, -1)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         if offset.2 == 15 {
-            if let Some(mut chunk) = self.get_mut_chunk(chunk_position.add(0, 0, 1)) {
-                chunk.schedule_mesh_rebuild();
+            if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 0, 1)) {
+                chunk.borrow().schedule_mesh_rebuild(self);
             }
         }
         self.light_updates.insert(position);
-        match self.get_mut_chunk(chunk_position) {
-            Some(mut chunk) => {
-                chunk.set_block(offset.0, offset.1, offset.2, id);
+        match self.get_chunk_clone(chunk_position) {
+            Some(chunk) => {
+                chunk
+                    .borrow_mut()
+                    .set_block(offset.0, offset.1, offset.2, id, self);
                 Ok(())
             }
             None => Err(()),
@@ -1561,7 +1592,8 @@ impl<'a> World<'a> {
             let light = light.0 as u16 | ((light.1 as u16) << 4) | ((light.2 as u16) << 8);
             //| ((light.3 as u16) << 12);
             chunk.light[offset.0 as usize][offset.1 as usize][offset.2 as usize] = light;
-            chunk.modified = true;
+            //chunk.modified = true;
+            //todo
         }
     }
     pub fn loaded(&self, position: ChunkPosition) -> bool {
@@ -1623,13 +1655,25 @@ impl<'a> World<'a> {
         time: f32,
         player_position: ChunkPosition,
     ) -> (i32, i32, i32, i32, i32) {
+        let mesh_updates: Vec<_> = self.chunk_mesh_updates.drain().collect(); //todo: optimize
+        for mesh_update in mesh_updates {
+            if let Some(chunk) = self.get_chunk_clone(mesh_update) {
+                let cloned_chunk = chunk.clone();
+                chunk.borrow_mut().rebuild_chunk_mesh(cloned_chunk, self);
+            }
+        }
         unsafe {
             ogl33::glEnable(GL_CULL_FACE);
         }
         let light_updates = self.update_lights() as i32;
         let mut rendered_chunks_stat = (0, 0, 0, self.chunks.len() as i32, light_updates);
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
-        for chunk in self.chunks.values() {
+        for chunk in self.solid_chunks.values() {
+            chunk
+                .borrow_mut()
+                .render(shader, true, &mut rendered_chunks_stat);
+        }
+        /*for chunk in self.chunks.values() {
             let mut borrowed_chunk = chunk.borrow_mut();
             let pos = borrowed_chunk.position.clone();
             borrowed_chunk.render(
@@ -1637,7 +1681,7 @@ impl<'a> World<'a> {
                 player_position.distance_squared(&pos) < 64,
                 &mut rendered_chunks_stat,
             );
-        }
+        }*/
         /*rendered_chunks.sort_by(|a, b| {
             let a = a.borrow();
             let b = b.borrow();
@@ -1650,7 +1694,7 @@ impl<'a> World<'a> {
             ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDisable(ogl33::GL_CULL_FACE);
         }
-        for chunk in self.chunks.values() {
+        for chunk in self.transparent_chunks.values() {
             chunk
                 .borrow()
                 .render_transparent(shader, &mut rendered_chunks_stat);
