@@ -344,7 +344,8 @@ pub struct DynamicBlockData {
 }
 
 pub struct Chunk<'a> {
-    blocks: [[[u32; 16]; 16]; 16],
+    blocks: Box<[u32]>,
+    block_palette: Vec<u32>,
     light: [[[u16; 16]; 16]; 16],
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
@@ -383,10 +384,22 @@ impl<'a> Chunk<'a> {
         world: &mut World,
     ) -> Self {
         let mut dynamic_blocks = HashMap::new();
-        for x in 0..16 {
+        let mut palette = Vec::new();
+        let mut block_paletted = Vec::with_capacity(16 * 16 * 16);
+        for z in 0..16 {
             for y in 0..16 {
-                for z in 0..16 {
+                for x in 0..16 {
                     let id = blocks[x as usize][y as usize][z as usize];
+                    'palette_search: {
+                        for entry in palette.iter().enumerate() {
+                            if id == *entry.1 {
+                                block_paletted.push(entry.0 as u32);
+                                break 'palette_search;
+                            }
+                        }
+                        block_paletted.push(palette.len() as u32);
+                        palette.push(id);
+                    }
                     let block = block_registry.get_block(id);
                     let block_position = BlockPosition {
                         x: position.x * 16 + x,
@@ -405,6 +418,29 @@ impl<'a> Chunk<'a> {
                                 items: HashMap::new(),
                             },
                         );
+                    }
+                }
+            }
+        }
+        let mut layed_blocks: Box<[u32]> = vec![
+            0u32;
+            (((palette.len() as f32).log2().ceil()) * 16. * 16. * 16. / 32.).ceil()
+                as usize
+        ]
+        .into_boxed_slice();
+        if palette.len() > 1 {
+            for x in 0..16 {
+                for y in 0..16 {
+                    for z in 0..16 {
+                        let position = Self::internal_block_position(x, y, z, palette.len() as u16);
+                        let mut block_palette_index = *block_paletted
+                            .get(
+                                (x as u16 + (y as u16 * 16u16) + (z as u16 * 16u16 * 16u16))
+                                    as usize,
+                            )
+                            .unwrap();
+                        block_palette_index <<= position.1;
+                        *layed_blocks.get_mut(position.0).unwrap() |= block_palette_index;
                     }
                 }
             }
@@ -557,7 +593,8 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(0);
         }
         Chunk {
-            blocks,
+            blocks: layed_blocks,
+            block_palette: palette,
             light: [[[15 << 12; 16]; 16]; 16],
             vao,
             vbo,
@@ -586,7 +623,8 @@ impl<'a> Chunk<'a> {
             z: (self.position.z * 16) + z as i32,
         };
         self.dynamic_blocks.remove(&position);
-        self.blocks[x as usize][y as usize][z as usize] = block_type;
+        //todo
+        //self.blocks[x as usize][y as usize][z as usize] = block_type;
         world.chunk_mesh_updates.insert(self.position);
         if self.block_registry.get_block(block_type).dynamic.is_some() {
             self.dynamic_blocks.insert(
@@ -603,7 +641,29 @@ impl<'a> Chunk<'a> {
         world.chunk_mesh_updates.insert(self.position);
     }
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
-        return self.blocks[x as usize][y as usize][z as usize];
+        if self.block_palette.len() == 1 {
+            return *self.block_palette.get(0).unwrap();
+        }
+        let position = Self::internal_block_position(x, y, z, self.block_palette.len() as u16);
+        let mut block_palette_index = *self.blocks.get(position.0).unwrap();
+        block_palette_index >>= position.1;
+        block_palette_index &= position.2 as u32;
+        *(self
+            .block_palette
+            .get(block_palette_index as usize)
+            .unwrap())
+    }
+    fn internal_block_position(x: u8, y: u8, z: u8, pallete_size: u16) -> (usize, u8, u16) {
+        let bits_per_block = (pallete_size as f32).log2().ceil() as u8;
+        let x = x as u16;
+        let y = y as u16;
+        let z = z as u16;
+        let bit_position = (x + (y * 16u16) + (z * 16u16 * 16u16)) as u32 * bits_per_block as u32;
+        (
+            (bit_position / 32) as usize,
+            (bit_position % 32) as u8,
+            2u16.pow(bits_per_block as u32) - 1,
+        )
     }
     pub fn get_light(&self, x: u8, y: u8, z: u8) -> (u8, u8, u8) {
         let light = self.light[x as usize][y as usize][z as usize];
@@ -640,7 +700,7 @@ impl<'a> Chunk<'a> {
                 let y = by as f32;
                 for bz in 0..16i32 {
                     let z = bz as f32;
-                    let block_id = self.blocks[bx as usize][by as usize][bz as usize];
+                    let block_id = self.get_block(bx as u8, by as u8, bz as u8);
                     let block = self.block_registry.get_block(block_id);
                     let position = BlockPosition {
                         x: bx,
@@ -663,57 +723,71 @@ impl<'a> Chunk<'a> {
                                 .offset_from_origin_chunk())
                                 {
                                     Some(Face::Front) => (
-                                        front_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        front_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         front_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     Some(Face::Back) => (
-                                        back_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        back_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         back_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     Some(Face::Left) => (
-                                        left_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        left_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         left_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     Some(Face::Right) => (
-                                        right_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        right_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         right_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     Some(Face::Up) => (
-                                        up_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        up_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         up_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     Some(Face::Down) => (
-                                        down_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        down_chunk.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         down_chunk.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
                                     ),
                                     None => (
-                                        self.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
+                                        self.get_block(
+                                            offset_in_chunk.0,
+                                            offset_in_chunk.1,
+                                            offset_in_chunk.2,
+                                        ),
                                         self.light[offset_in_chunk.0 as usize]
                                             [offset_in_chunk.1 as usize]
                                             [offset_in_chunk.2 as usize],
@@ -836,41 +910,41 @@ impl<'a> Chunk<'a> {
                                 }
                                 .offset_from_origin_chunk())
                                 {
-                                    Some(Face::Front) => {
-                                        front_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Back) => {
-                                        back_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Left) => {
-                                        left_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Right) => {
-                                        right_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Up) => {
-                                        up_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Down) => {
-                                        down_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    None => {
-                                        self.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
+                                    Some(Face::Front) => front_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    Some(Face::Back) => back_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    Some(Face::Left) => left_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    Some(Face::Right) => right_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    Some(Face::Up) => up_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    Some(Face::Down) => down_chunk.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
+                                    None => self.get_block(
+                                        offset_in_chunk.0,
+                                        offset_in_chunk.1,
+                                        offset_in_chunk.2,
+                                    ),
                                 };
                                 if let Some(connection) =
                                     connections.by_face(face).get(&neighbor_block)
@@ -1108,39 +1182,33 @@ impl<'a> Chunk<'a> {
         render_foliage: bool,
         rendered_chunks_stat: &mut (i32, i32, i32, i32, i32),
     ) {
-        /*if self.modified {
-            self.modified = !self.rebuild_chunk_mesh();
-        }*/
-        if true {
-            /* !self.modified*/
-            if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
-                shader.set_uniform_matrix(
-                    shader
-                        .get_uniform_location("model\0")
-                        .expect("uniform model not found"),
-                    Mat4::from_translation(Vec3 {
-                        x: (self.position.x * 16) as f32,
-                        y: (self.position.y * 16) as f32,
-                        z: (self.position.z * 16) as f32,
-                    }),
-                );
+        if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
+            shader.set_uniform_matrix(
+                shader
+                    .get_uniform_location("model\0")
+                    .expect("uniform model not found"),
+                Mat4::from_translation(Vec3 {
+                    x: (self.position.x * 16) as f32,
+                    y: (self.position.y * 16) as f32,
+                    z: (self.position.z * 16) as f32,
+                }),
+            );
+        }
+        if self.vertex_count != 0 {
+            rendered_chunks_stat.0 += 1;
+            self.vao.bind();
+            unsafe {
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
             }
-            if self.vertex_count != 0 {
-                rendered_chunks_stat.0 += 1;
-                self.vao.bind();
-                unsafe {
-                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
-                }
-            }
-            if self.foliage_vertex_count != 0 && render_foliage {
-                rendered_chunks_stat.2 += 1;
-                self.foliage_vao.bind();
-                unsafe {
-                    ogl33::glDisable(GL_CULL_FACE);
+        }
+        if self.foliage_vertex_count != 0 && render_foliage {
+            rendered_chunks_stat.2 += 1;
+            self.foliage_vao.bind();
+            unsafe {
+                ogl33::glDisable(GL_CULL_FACE);
 
-                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
-                    ogl33::glEnable(GL_CULL_FACE);
-                }
+                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
+                ogl33::glEnable(GL_CULL_FACE);
             }
         }
     }
