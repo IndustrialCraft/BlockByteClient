@@ -344,8 +344,7 @@ pub struct DynamicBlockData {
 }
 
 pub struct Chunk<'a> {
-    blocks: Box<[u32]>,
-    block_palette: Vec<u32>,
+    blocks: PalettedBlockStorage,
     light: [[[u16; 16]; 16]; 16],
     vao: glwrappers::VertexArray,
     vbo: glwrappers::Buffer,
@@ -384,21 +383,22 @@ impl<'a> Chunk<'a> {
         world: &mut World,
     ) -> Self {
         let mut dynamic_blocks = HashMap::new();
-        let mut palette = Vec::new();
+        let mut palette: Vec<(u32, u32)> = Vec::new();
         let mut block_paletted = Vec::with_capacity(16 * 16 * 16);
         for z in 0..16 {
             for y in 0..16 {
                 for x in 0..16 {
                     let id = blocks[x as usize][y as usize][z as usize];
                     'palette_search: {
-                        for entry in palette.iter().enumerate() {
-                            if id == *entry.1 {
+                        for entry in palette.iter_mut().enumerate() {
+                            if id == (entry.1 .0) {
+                                entry.1 .1 += 1;
                                 block_paletted.push(entry.0 as u32);
                                 break 'palette_search;
                             }
                         }
                         block_paletted.push(palette.len() as u32);
-                        palette.push(id);
+                        palette.push((id, 1));
                     }
                     let block = block_registry.get_block(id);
                     let block_position = BlockPosition {
@@ -422,17 +422,23 @@ impl<'a> Chunk<'a> {
                 }
             }
         }
-        let mut layed_blocks: Box<[u32]> = vec![
-            0u32;
-            (((palette.len() as f32).log2().ceil()) * 16. * 16. * 16. / 32.).ceil()
+        let mut layed_blocks: Box<[u16]> = vec![
+            0u16;
+            (((palette.len() as f32).log2().ceil()) * 16. * 16. * 16. / 16.).ceil()
                 as usize
+                + 1
         ]
         .into_boxed_slice();
         if palette.len() > 1 {
             for x in 0..16 {
                 for y in 0..16 {
                     for z in 0..16 {
-                        let position = Self::internal_block_position(x, y, z, palette.len() as u16);
+                        let position = PalettedBlockStorage::internal_block_position(
+                            x,
+                            y,
+                            z,
+                            palette.len() as u16,
+                        );
                         let mut block_palette_index = *block_paletted
                             .get(
                                 (x as u16 + (y as u16 * 16u16) + (z as u16 * 16u16 * 16u16))
@@ -440,7 +446,9 @@ impl<'a> Chunk<'a> {
                             )
                             .unwrap();
                         block_palette_index <<= position.1;
-                        *layed_blocks.get_mut(position.0).unwrap() |= block_palette_index;
+                        *layed_blocks.get_mut(position.0).unwrap() |= block_palette_index as u16;
+                        *layed_blocks.get_mut(position.0 + 1).unwrap() |=
+                            (block_palette_index >> 16) as u16;
                     }
                 }
             }
@@ -593,8 +601,10 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(0);
         }
         Chunk {
-            blocks: layed_blocks,
-            block_palette: palette,
+            blocks: PalettedBlockStorage {
+                blocks: layed_blocks,
+                block_palette: palette,
+            },
             light: [[[15 << 12; 16]; 16]; 16],
             vao,
             vbo,
@@ -625,6 +635,18 @@ impl<'a> Chunk<'a> {
         self.dynamic_blocks.remove(&position);
         //todo
         //self.blocks[x as usize][y as usize][z as usize] = block_type;
+        /*let previous = self.get_block(x, y, z);
+        'palette_search: {
+            for entry in palette.iter_mut().enumerate() {
+                if id == (entry.1 .0) {
+                    entry.1 .1 += 1;
+                    block_paletted.push(entry.0 as u32);
+                    break 'palette_search;
+                }
+            }
+            block_paletted.push(palette.len() as u32);
+            palette.push((id, 1));
+        }*/
         world.chunk_mesh_updates.insert(self.position);
         if self.block_registry.get_block(block_type).dynamic.is_some() {
             self.dynamic_blocks.insert(
@@ -640,31 +662,7 @@ impl<'a> Chunk<'a> {
     pub fn schedule_mesh_rebuild(&self, world: &mut World) {
         world.chunk_mesh_updates.insert(self.position);
     }
-    pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
-        if self.block_palette.len() == 1 {
-            return *self.block_palette.get(0).unwrap();
-        }
-        let position = Self::internal_block_position(x, y, z, self.block_palette.len() as u16);
-        let mut block_palette_index = *self.blocks.get(position.0).unwrap();
-        block_palette_index >>= position.1;
-        block_palette_index &= position.2 as u32;
-        *(self
-            .block_palette
-            .get(block_palette_index as usize)
-            .unwrap())
-    }
-    fn internal_block_position(x: u8, y: u8, z: u8, pallete_size: u16) -> (usize, u8, u16) {
-        let bits_per_block = (pallete_size as f32).log2().ceil() as u8;
-        let x = x as u16;
-        let y = y as u16;
-        let z = z as u16;
-        let bit_position = (x + (y * 16u16) + (z * 16u16 * 16u16)) as u32 * bits_per_block as u32;
-        (
-            (bit_position / 32) as usize,
-            (bit_position % 32) as u8,
-            2u16.pow(bits_per_block as u32) - 1,
-        )
-    }
+
     pub fn get_light(&self, x: u8, y: u8, z: u8) -> (u8, u8, u8) {
         let light = self.light[x as usize][y as usize][z as usize];
         (
@@ -673,6 +671,9 @@ impl<'a> Chunk<'a> {
             ((light >> 8) & 15) as u8,
             //((light >> 12) & 15) as u8,
         )
+    }
+    pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
+        self.blocks.get_block(x, y, z)
     }
     fn rebuild_chunk_mesh(&mut self, this: Rc<RefCell<Chunk<'a>>>, world: &mut World<'a>) {
         if self.front.is_none()
@@ -1234,6 +1235,112 @@ impl<'a> Chunk<'a> {
                 ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
             }
         }
+    }
+}
+pub struct PalettedBlockStorage {
+    blocks: Box<[u16]>,
+    block_palette: Vec<(u32, u32)>,
+}
+impl PalettedBlockStorage {
+    pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_id: u32) {
+        let previous_block_id = self.get_block(x, y, z);
+        if previous_block_id == block_id {
+            return;
+        }
+        let only_previous = self.palette_count(previous_block_id) <= 1;
+        let no_current = self.palette_count(block_id) == 0;
+        match (only_previous, no_current) {
+            (true, true) => {
+                for entry in &mut self.block_palette {
+                    if entry.0 == previous_block_id {
+                        entry.0 = block_id;
+                        return;
+                    }
+                }
+                unreachable!();
+            }
+            (false, false) => {
+                self.get_palette_entry(previous_block_id).unwrap().1 .1 -= 1;
+                let new_palette_entry = self.get_palette_entry(block_id).unwrap();
+                new_palette_entry.1 .1 += 1;
+            }
+            /*(true, false) => {
+                if ((self.block_palette.len() - 1) as f32).log2().ceil() as u8
+                    == self.bits_per_block()
+                {
+                    let palette_id = self.get_palette_entry(block_id).unwrap().0 as u16;
+                    self.set_internal_block(x, y, z, palette_id);
+                    let previous_palette_id =
+                        self.get_palette_entry(previous_block_id).unwrap().0 as u16;
+                        let
+                } else {
+                }
+            }*/
+            _ => println!("todo"),
+        }
+    }
+    fn set_internal_block(&mut self, x: u8, y: u8, z: u8, palette_id: u16) {
+        let position =
+            PalettedBlockStorage::internal_block_position(x, y, z, self.block_palette.len() as u16);
+        let mut block_palette_index = palette_id as u32;
+        block_palette_index <<= position.1;
+        let mask = !((position.2 as u32) << position.1);
+        {
+            let location = self.blocks.get_mut(position.0).unwrap();
+            *location &= mask as u16;
+            *location |= block_palette_index as u16;
+        }
+        {
+            let location2 = self.blocks.get_mut(position.0 + 1).unwrap();
+            *location2 &= (mask >> 16) as u16;
+            *location2 |= (block_palette_index >> 16) as u16;
+        }
+    }
+    pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
+        if self.block_palette.len() == 1 {
+            return self.block_palette.get(0).unwrap().0;
+        }
+        let position = Self::internal_block_position(x, y, z, self.block_palette.len() as u16);
+        let mut block_palette_index = *self.blocks.get(position.0).unwrap() as u32;
+        block_palette_index |= (*self.blocks.get(position.0 + 1).unwrap() as u32) << 16;
+        block_palette_index >>= position.1;
+        block_palette_index &= position.2 as u32;
+        (self
+            .block_palette
+            .get(block_palette_index as usize)
+            .unwrap())
+        .0
+    }
+    pub fn palette_count(&self, block_id: u32) -> u32 {
+        for entry in self.block_palette.iter() {
+            if block_id == entry.0 {
+                return entry.1;
+            }
+        }
+        0
+    }
+    pub fn get_palette_entry(&mut self, block_id: u32) -> Option<(u32, &mut (u32, u32))> {
+        for entry in self.block_palette.iter_mut().enumerate() {
+            if block_id == entry.1 .0 {
+                return Some((entry.0 as u32, entry.1));
+            }
+        }
+        None
+    }
+    pub fn bits_per_block(&self) -> u8 {
+        (self.block_palette.len() as f32).log2().ceil() as u8
+    }
+    fn internal_block_position(x: u8, y: u8, z: u8, pallete_size: u16) -> (usize, u8, u16) {
+        let bits_per_block = (pallete_size as f32).log2().ceil() as u8;
+        let x = x as u16;
+        let y = y as u16;
+        let z = z as u16;
+        let bit_position = (x + (y * 16u16) + (z * 16u16 * 16u16)) as u32 * bits_per_block as u32;
+        (
+            (bit_position / 16) as usize,
+            (bit_position % 16) as u8,
+            2u16.pow(bits_per_block as u32) - 1,
+        )
     }
 }
 #[derive(Clone)]
