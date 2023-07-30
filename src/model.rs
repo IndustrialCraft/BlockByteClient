@@ -9,6 +9,7 @@ use ultraviolet::Vec3;
 use ultraviolet::Vec4;
 
 use crate::game::AtlassedTexture;
+use crate::game::BlockRegistry;
 use crate::glwrappers::Vertex;
 use crate::util;
 use crate::util::Corner;
@@ -712,6 +713,7 @@ struct Animation {
 
 pub struct ItemRenderer<'a> {
     pub items: &'a HashMap<u32, ItemRenderData>,
+    pub block_registry: &'a BlockRegistry,
     pub texture_atlas: &'a TextureAtlas,
 }
 impl<'a> ItemRenderer<'a> {
@@ -795,7 +797,192 @@ impl<'a> ItemRenderer<'a> {
                     );
                 }
             }
-            util::ItemModel::Block(_) => {}
+            util::ItemModel::Block(block) => {
+                let block = self.block_registry.get_block(*block);
+                match &block.render_type {
+                    crate::game::BlockRenderType::Air
+                    | crate::game::BlockRenderType::StaticModel(_, _, _, _, _, _, _, _, _, _)
+                    | crate::game::BlockRenderType::Foliage(_, _, _, _) => {}
+                    crate::game::BlockRenderType::Cube(_, north, _, right, _, up, _) => {
+                        let middle_x = scale.x * 13. / 26.;
+                        let middle_y = scale.y * 11. / 26.;
+                        Bone::create_face(
+                            vertex_consumer,
+                            *matrix
+                                * Vec4::new(
+                                    position.x,
+                                    position.y,
+                                    position.z + (scale.y / 6. * 5.),
+                                    1.,
+                                ),
+                            Corner::UpLeft,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + middle_x,
+                                    position.y,
+                                    position.z + scale.y,
+                                    1.,
+                                ),
+                            Corner::DownLeft,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + scale.x,
+                                    position.y,
+                                    position.z + (scale.y / 6. * 5.),
+                                    1.,
+                                ),
+                            Corner::UpRight,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + middle_x,
+                                    position.y,
+                                    position.z + middle_y,
+                                    1.,
+                                ),
+                            Corner::DownRight,
+                            &CubeElementFace {
+                                u1: 0.,
+                                v1: 0.,
+                                u2: 1.,
+                                v2: 1.,
+                            },
+                            up,
+                        );
+                        Bone::create_face(
+                            vertex_consumer,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + middle_x,
+                                    position.y,
+                                    position.z + middle_y,
+                                    1.,
+                                ),
+                            Corner::UpLeft,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + scale.x,
+                                    position.y,
+                                    position.z + (scale.y * 5. / 6.),
+                                    1.,
+                                ),
+                            Corner::UpRight,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + (scale.x * 23. / 25.),
+                                    position.y,
+                                    position.z + (scale.y * 7.5 / 25.),
+                                    1.,
+                                ),
+                            Corner::DownRight,
+                            *matrix * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
+                            Corner::DownLeft,
+                            &CubeElementFace {
+                                u1: 0.,
+                                v1: 0.,
+                                u2: 1.,
+                                v2: 1.,
+                            },
+                            north,
+                        );
+                        Bone::create_face(
+                            vertex_consumer,
+                            *matrix
+                                * Vec4::new(
+                                    position.x,
+                                    position.y,
+                                    position.z + (scale.y * 5. / 6.),
+                                    1.,
+                                ),
+                            Corner::UpLeft,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + middle_x,
+                                    position.y,
+                                    position.z + middle_y,
+                                    1.,
+                                ),
+                            Corner::UpRight,
+                            *matrix * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
+                            Corner::DownRight,
+                            *matrix
+                                * Vec4::new(
+                                    position.x + (scale.x * 2. / 25.),
+                                    position.y,
+                                    position.z + (scale.y * 7.5 / 25.),
+                                    1.,
+                                ),
+                            Corner::DownLeft,
+                            &CubeElementFace {
+                                u1: 0.,
+                                v1: 0.,
+                                u2: 1.,
+                                v2: 1.,
+                            },
+                            right,
+                        );
+                        /*quads.push(GUIQuad {
+                            x1: x,
+                            y1: y + (size / 6. * 5.),
+                            x2: x + middle_x,
+                            y2: y + size,
+                            x3: x + size,
+                            y3: y + (size / 6. * 5.),
+                            x4: x + middle_x,
+                            y4: y + middle_y,
+                            color: Color {
+                                r: 1.,
+                                g: 1.,
+                                b: 1.,
+                                a: 1.,
+                            },
+                            u1: top_texture.0,
+                            v1: top_texture.1,
+                            u2: top_texture.2,
+                            v2: top_texture.3,
+                        });
+                        quads.push(GUIQuad {
+                            x1: x + middle_x,
+                            y1: y + middle_y,
+                            x2: x + size,
+                            y2: y + (size * 5. / 6.),
+                            x3: x + (size * 23. / 25.),
+                            y3: y + (size * 7.5 / 25.),
+                            x4: x + middle_x,
+                            y4: y,
+                            color: Color {
+                                r: 1.,
+                                g: 1.,
+                                b: 1.,
+                                a: 1.,
+                            },
+                            u1: front_texture.0,
+                            v1: front_texture.3,
+                            u2: front_texture.2,
+                            v2: front_texture.1,
+                        });
+                        quads.push(GUIQuad {
+                            x1: x,
+                            y1: y + (size * 5. / 6.),
+                            x2: x + middle_x,
+                            y2: y + middle_y,
+                            x3: x + middle_x,
+                            y3: y,
+                            x4: x + (size * 2. / 25.),
+                            y4: y + (size * 7.5 / 25.),
+                            color: Color {
+                                r: 1.,
+                                g: 1.,
+                                b: 1.,
+                                a: 1.,
+                            },
+                            u1: right_texture.0,
+                            v1: right_texture.3,
+                            u2: right_texture.2,
+                            v2: right_texture.1,
+                        });*/
+                    }
+                }
+            }
         }
     }
 }

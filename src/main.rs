@@ -225,6 +225,7 @@ fn main() {
     let item_renderer = ItemRenderer {
         items: &item_registry,
         texture_atlas: &texture_atlas,
+        block_registry: &block_registry,
     };
     let mut fps = 0u32;
     let mut last_fps_cnt = 0u32;
