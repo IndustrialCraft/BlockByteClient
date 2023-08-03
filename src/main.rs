@@ -238,6 +238,8 @@ fn main() {
     let mut fullscreen = false;
     let mut vsync = true;
     let mut orthographic_projection = false;
+    let mut not_loaded_chunks_blocks: FxHashMap<ChunkPosition, Vec<(u8, u8, u8, u32)>> =
+        FxHashMap::default();
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -248,9 +250,14 @@ fn main() {
                         match message {
                             NetworkMessageS2C::SetBlock(x, y, z, id) => {
                                 let position = BlockPosition { x, y, z };
-                                world
-                                    .set_block(position, id)
-                                    .expect(format!("chunk not loaded at {x} {y} {z}").as_str());
+                                let offset = position.chunk_offset();
+                                if let Err(_) = world
+                                    .set_block(position, id){
+                                         let entry = not_loaded_chunks_blocks.entry(position.to_chunk_pos()).or_insert_with(||Vec::new());
+                                            entry.push((offset.0, offset.1, offset.2, id));
+                                        
+                                    }
+                                    /*.expect(format!("chunk not loaded at {x} {y} {z}").as_str())*/;
                             }
                             NetworkMessageS2C::LoadChunk(x, y, z, blocks) => {
                                 let mut decoder =
@@ -266,7 +273,15 @@ fn main() {
                                         }
                                     }
                                 }
-                                world.load_chunk(ChunkPosition { x, y, z }, blocks);
+                                let position = ChunkPosition { x, y, z };
+                                if let Some(block_data) = not_loaded_chunks_blocks.remove(&position)
+                                {
+                                    for block in block_data {
+                                        blocks[block.0 as usize][block.1 as usize]
+                                            [block.2 as usize] = block.3;
+                                    }
+                                }
+                                world.load_chunk(position, blocks);
                             }
                             NetworkMessageS2C::UnloadChunk(x, y, z) => {
                                 world.unload_chunk(ChunkPosition { x, y, z });
