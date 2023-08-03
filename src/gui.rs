@@ -471,7 +471,7 @@ impl GUIComponent {
                                     let front_texture = north.get_coords();
                                     let right_texture = right.get_coords();
                                     let middle_x = size * 13. / 26.;
-                                    let middle_y = size * 11. / 26.;
+                                    let middle_y = size * 4. / 6.;
                                     quads.push(GUIQuad {
                                         x1: x,
                                         y1: y + (size / 6. * 5.),
@@ -497,7 +497,7 @@ impl GUIComponent {
                                         y1: y + middle_y,
                                         x2: x + size,
                                         y2: y + (size * 5. / 6.),
-                                        x3: x + (size * 23. / 25.),
+                                        x3: x + size,
                                         y3: y + (size * 7.5 / 25.),
                                         x4: x + middle_x,
                                         y4: y,
@@ -519,7 +519,7 @@ impl GUIComponent {
                                         y2: y + middle_y,
                                         x3: x + middle_x,
                                         y3: y,
-                                        x4: x + (size * 2. / 25.),
+                                        x4: x,
                                         y4: y + (size * 7.5 / 25.),
                                         color: Color {
                                             r: 1.,

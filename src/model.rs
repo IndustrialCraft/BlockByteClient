@@ -805,7 +805,7 @@ impl<'a> ItemRenderer<'a> {
                     | crate::game::BlockRenderType::Foliage(_, _, _, _) => {}
                     crate::game::BlockRenderType::Cube(_, north, _, right, _, up, _) => {
                         let middle_x = scale.x * 13. / 26.;
-                        let middle_y = scale.y * 11. / 26.;
+                        let middle_y = scale.y * 4. / 6.;
                         Bone::create_face(
                             vertex_consumer,
                             *matrix
@@ -868,7 +868,7 @@ impl<'a> ItemRenderer<'a> {
                             Corner::UpRight,
                             *matrix
                                 * Vec4::new(
-                                    position.x + (scale.x * 23. / 25.),
+                                    position.x + scale.x,
                                     position.y,
                                     position.z + (scale.y * 7.5 / 25.),
                                     1.,
@@ -906,7 +906,7 @@ impl<'a> ItemRenderer<'a> {
                             Corner::DownRight,
                             *matrix
                                 * Vec4::new(
-                                    position.x + (scale.x * 2. / 25.),
+                                    position.x,
                                     position.y,
                                     position.z + (scale.y * 7.5 / 25.),
                                     1.,
