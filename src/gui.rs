@@ -652,6 +652,7 @@ impl<'a> GUI<'a> {
         window: &'a RefCell<sdl2::video::Window>,
         block_registry: &'a game::BlockRegistry,
     ) -> Self {
+        sdl.mouse().set_relative_mouse_mode(true);
         Self {
             cursor: None,
             renderer: GUIRenderer::new(),
