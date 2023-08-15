@@ -87,7 +87,7 @@ fn main() {
         video_subsystem
             .window("BlockByte", 900, 700)
             .opengl()
-            //.fullscreen_desktop()
+            .fullscreen_desktop()
             .resizable()
             .build()
             .unwrap(),
@@ -235,7 +235,7 @@ fn main() {
     let mut sky_renderer = SkyRenderer::new();
     let mut fluid_selectable = false;
     let mut particle_manager = game::ParticleManager::new();
-    let mut fullscreen = false;
+    let mut fullscreen = true;
     let mut vsync = true;
     let mut orthographic_projection = false;
     let mut not_loaded_chunks_blocks: FxHashMap<ChunkPosition, Vec<(u8, u8, u8, u32)>> =
