@@ -1,10 +1,10 @@
 #![allow(dead_code)]
 #![feature(
-    hash_drain_filter,
+    hash_extract_if,
     int_roundings,
     result_option_inspect,
     fn_traits,
-    drain_filter,
+    extract_if,
     let_chains
 )]
 mod game;

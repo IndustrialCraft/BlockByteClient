@@ -751,7 +751,8 @@ impl<'a> GUI<'a> {
             "removeContainer" => {
                 let container = data["container"].as_str().unwrap();
                 self.elements
-                    .drain_filter(|id, _| id.starts_with(container));
+                    .extract_if(|id, _| id.starts_with(container))
+                    .count();
             }
             _ => {}
         }

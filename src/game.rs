@@ -1758,7 +1758,7 @@ impl ParticleManager {
                 }
             }
         }
-        self.particles.drain_filter(|p| p.destroyed);
+        self.particles.extract_if(|p| p.destroyed).count();
     }
 }
 pub struct ParticleRenderer {
@@ -1942,6 +1942,7 @@ impl SoundManager {
             .unwrap();
         //todo: set velocity
         self.sounds
-            .drain_filter(|source| source.state() != alto::SourceState::Playing);
+            .extract_if(|source| source.state() != alto::SourceState::Playing)
+            .count();
     }
 }
