@@ -23,6 +23,7 @@ use std::time::Instant;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 
+use array_init::array_init;
 use discord_rich_presence::activity::Activity;
 use discord_rich_presence::activity::Assets;
 use discord_rich_presence::activity::Timestamps;
@@ -260,7 +261,8 @@ fn main() {
                                     /*.expect(format!("chunk not loaded at {x} {y} {z}").as_str())*/;
                             }
                             NetworkMessageS2C::LoadChunk(x, y, z, blocks) => {
-                                let mut decoder =
+                                let position = ChunkPosition { x, y, z };                                
+                                /*let mut decoder =
                                     libflate::zlib::Decoder::new(blocks.as_slice()).unwrap();
                                 let mut blocks_data = Vec::new();
                                 std::io::copy(&mut decoder, &mut blocks_data).unwrap();
@@ -280,8 +282,20 @@ fn main() {
                                         blocks[block.0 as usize][block.1 as usize]
                                             [block.2 as usize] = block.3;
                                     }
+                                }*/
+                                let mut blocks = blocks.as_slice();
+                                let palette_len: u32 = blocks.read_be().unwrap();
+                                println!("chunk {} {} {}", position.x, position.y, position.z);
+                                
+                                println!("len {}", palette_len);
+                                let mut palette: Vec<u32> = Vec::new();
+                                for _ in 0..palette_len{
+                                    palette.push(blocks.read_be().unwrap());
                                 }
-                                world.load_chunk(position, blocks);
+                                world.load_chunk(position, array_init(|_|array_init(|_|array_init(|_|{
+                                    let palette_id: u16 = if palette_len > 1 {blocks.read_be().unwrap()} else {0};
+                                    *palette.get(palette_id as usize).unwrap()
+                                }))));
                             }
                             NetworkMessageS2C::UnloadChunk(x, y, z) => {
                                 world.unload_chunk(ChunkPosition { x, y, z });
