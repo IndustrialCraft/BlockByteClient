@@ -1,3 +1,5 @@
+use bytemuck::Pod;
+
 #[repr(C, packed)]
 #[derive(Clone, Copy)]
 pub struct Vertex {
@@ -279,5 +281,45 @@ impl Texture {
         unsafe {
             ogl33::glBindTexture(ogl33::GL_TEXTURE_2D, self.tex_id);
         }
+    }
+}
+
+pub struct RenderBuffer {
+    vao: VertexArray,
+    vbo: Buffer,
+    vertex_count: u32,
+}
+impl RenderBuffer {
+    pub fn new<F>(init: F) -> Self
+    where
+        F: FnOnce(),
+    {
+        let vao = VertexArray::new().expect("couldnt create vao");
+        vao.bind();
+        let vbo = Buffer::new(BufferType::Array).expect("couldnt create vbo");
+        vbo.bind();
+        init.call_once(());
+        Self {
+            vao,
+            vbo,
+            vertex_count: 0,
+        }
+    }
+    pub fn draw_triangles(&self) {
+        self.vao.bind();
+        unsafe {
+            ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
+        }
+    }
+    pub fn upload<T>(&mut self, vertices: &Vec<T>)
+    where
+        T: Copy + Pod,
+    {
+        self.vertex_count = vertices.len() as u32;
+        self.vbo
+            .upload_data(bytemuck::cast_slice(&vertices), ogl33::GL_STATIC_DRAW);
+    }
+    pub fn has_data(&self) -> bool {
+        self.vertex_count > 0
     }
 }

@@ -32,6 +32,7 @@ use game::AtlassedTexture;
 use game::Block;
 use game::BlockRegistry;
 use game::BlockRenderType;
+use game::Chunk;
 use game::Entity;
 use game::SoundManager;
 use game::StaticBlockModelConnections;
@@ -122,6 +123,7 @@ fn main() {
         entity_registry,
         item_registry,
     ) = load_assets(assets.as_path());
+    let block_registry = Arc::new(block_registry);
     /*assets.push("icon.png");
     {
         window
@@ -195,7 +197,7 @@ fn main() {
         .gl_set_swap_interval(SwapInterval::VSync)
         .unwrap();
     let mut outline_renderer = BlockOutline::new();
-    let mut world = game::World::new(&block_registry);
+    let mut world = game::World::new(block_registry.clone());
     let mut event_pump = sdl.event_pump().unwrap();
     let timer = sdl.timer().unwrap();
     let mut gui = gui::GUI::new(
@@ -343,7 +345,7 @@ fn main() {
                                     world.get_mut_chunk(block_pos.to_chunk_pos())
                                 {
                                     if let Some(dynamic_block) =
-                                        chunk.dynamic_blocks.get_mut(&block_pos)
+                                        chunk.dynamic_blocks.lock().unwrap().get_mut(&block_pos)
                                     {
                                         dynamic_block.items.insert(
                                             item_index,
@@ -362,7 +364,7 @@ fn main() {
                                     world.get_mut_chunk(block_pos.to_chunk_pos())
                                 {
                                     if let Some(dynamic_block) =
-                                        chunk.dynamic_blocks.get_mut(&block_pos)
+                                        chunk.dynamic_blocks.lock().unwrap().get_mut(&block_pos)
                                     {
                                         dynamic_block.items.remove(&item_index);
                                     }
@@ -412,7 +414,7 @@ fn main() {
                                     world.get_mut_chunk(position.to_chunk_pos())
                                 {
                                     if let Some(dynamic_block) =
-                                        chunk.dynamic_blocks.get_mut(&position)
+                                        chunk.dynamic_blocks.lock().unwrap().get_mut(&position)
                                     {
                                         dynamic_block.animation =
                                             Some((animation, timer.ticks() as f32 / 1000.));
@@ -798,9 +800,10 @@ fn main() {
                     &entity.1.items,
                 ));
             }
-            let chunks: Vec<_> = world.chunks.iter().map(|chunk| chunk.1.borrow()).collect();
-            for chunk in &chunks {
-                for block in &chunk.dynamic_blocks {
+            let chunks: Vec<Arc<Chunk>> = world.chunks.lock().unwrap().iter().map(|chunk| {chunk.1.clone()}).collect();
+            let dynamic: Vec<_> = chunks.iter().map(|chunk|chunk.dynamic_blocks.lock().unwrap()).collect();
+            for dynamic in &dynamic {
+                for block in dynamic.iter() {
                     models.push((
                         block.0.to_position().add(0.5, 0., 0.5),
                         match &block.1.animation {

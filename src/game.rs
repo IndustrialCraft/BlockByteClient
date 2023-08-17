@@ -6,7 +6,7 @@ use std::{
     os,
     path::Path,
     rc::Rc,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, RwLock, Weak},
 };
 
 use crate::{
@@ -22,6 +22,7 @@ use json::JsonValue;
 use ogl33::GL_CULL_FACE;
 use rustc_hash::{FxHashMap, FxHashSet};
 use sdl2::keyboard::Keycode;
+use threadpool::ThreadPool;
 use ultraviolet::*;
 use uuid::Uuid;
 
@@ -343,44 +344,38 @@ pub struct DynamicBlockData {
     pub items: HashMap<u32, ItemSlot>,
 }
 
-pub struct Chunk<'a> {
-    blocks: [[[u32; 16]; 16]; 16],
-    light: [[[u16; 16]; 16]; 16],
-    vao: glwrappers::VertexArray,
-    vbo: glwrappers::Buffer,
-    vertex_count: u32,
-    transparent_vao: glwrappers::VertexArray,
-    transparent_vbo: glwrappers::Buffer,
-    transparent_vertex_count: u32,
-    foliage_vao: glwrappers::VertexArray,
-    foliage_vbo: glwrappers::Buffer,
-    foliage_vertex_count: u32,
+pub struct Chunk {
+    blocks: Mutex<[[[u32; 16]; 16]; 16]>,
+    light: Mutex<[[[u16; 16]; 16]; 16]>,
+    solid: Mutex<glwrappers::RenderBuffer>,
+    transparent: Mutex<glwrappers::RenderBuffer>,
+    foliage: Mutex<glwrappers::RenderBuffer>,
     position: ChunkPosition,
-    block_registry: &'a BlockRegistry,
-    front: Option<Rc<RefCell<Chunk<'a>>>>,
-    back: Option<Rc<RefCell<Chunk<'a>>>>,
-    left: Option<Rc<RefCell<Chunk<'a>>>>,
-    right: Option<Rc<RefCell<Chunk<'a>>>>,
-    up: Option<Rc<RefCell<Chunk<'a>>>>,
-    down: Option<Rc<RefCell<Chunk<'a>>>>,
-    pub dynamic_blocks: HashMap<BlockPosition, DynamicBlockData>,
+    block_registry: Arc<BlockRegistry>,
+    front: Mutex<Option<Arc<Chunk>>>,
+    back: Mutex<Option<Arc<Chunk>>>,
+    left: Mutex<Option<Arc<Chunk>>>,
+    right: Mutex<Option<Arc<Chunk>>>,
+    up: Mutex<Option<Arc<Chunk>>>,
+    down: Mutex<Option<Arc<Chunk>>>,
+    pub dynamic_blocks: Mutex<HashMap<BlockPosition, DynamicBlockData>>,
 }
-impl<'a> Chunk<'a> {
-    fn set_neighbor_by_face(&mut self, face: &Face, chunk: Option<Rc<RefCell<Chunk<'a>>>>) {
+impl Chunk {
+    fn set_neighbor_by_face(&self, face: &Face, chunk: Option<Arc<Chunk>>) {
         match face {
-            Face::Front => self.front = chunk,
-            Face::Back => self.back = chunk,
-            Face::Left => self.left = chunk,
-            Face::Right => self.right = chunk,
-            Face::Up => self.up = chunk,
-            Face::Down => self.down = chunk,
+            Face::Front => *self.front.lock().unwrap() = chunk,
+            Face::Back => *self.back.lock().unwrap() = chunk,
+            Face::Left => *self.left.lock().unwrap() = chunk,
+            Face::Right => *self.right.lock().unwrap() = chunk,
+            Face::Up => *self.up.lock().unwrap() = chunk,
+            Face::Down => *self.down.lock().unwrap() = chunk,
         }
     }
     pub fn new(
         position: ChunkPosition,
-        block_registry: &'a BlockRegistry,
+        block_registry: Arc<BlockRegistry>,
         blocks: [[[u32; 16]; 16]; 16],
-        world: &mut World,
+        world: &World,
     ) -> Self {
         let mut dynamic_blocks = HashMap::new();
         for x in 0..16 {
@@ -394,7 +389,7 @@ impl<'a> Chunk<'a> {
                         z: position.z * 16 + z,
                     };
                     if block.is_light_emmiting() {
-                        world.light_updates.insert(block_position);
+                        world.light_updates.lock().unwrap().insert(block_position);
                     }
                     if block.dynamic.is_some() {
                         dynamic_blocks.insert(
@@ -409,12 +404,7 @@ impl<'a> Chunk<'a> {
                 }
             }
         }
-        let vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
-        vao.bind();
-        let vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
-            .expect("couldnt create vbo for chunk");
-        vbo.bind();
-        unsafe {
+        let solid = glwrappers::RenderBuffer::new(|| unsafe {
             ogl33::glVertexAttribPointer(
                 0,
                 3,
@@ -457,13 +447,8 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(2);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
-        }
-        let transparent_vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
-        transparent_vao.bind();
-        let transparent_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
-            .expect("couldnt create vbo for chunk");
-        transparent_vbo.bind();
-        unsafe {
+        });
+        let transparent = glwrappers::RenderBuffer::new(|| unsafe {
             ogl33::glVertexAttribPointer(
                 0,
                 3,
@@ -506,13 +491,8 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(2);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
-        }
-        let foliage_vao = glwrappers::VertexArray::new().expect("couldnt create vao for chunk");
-        foliage_vao.bind();
-        let foliage_vbo = glwrappers::Buffer::new(glwrappers::BufferType::Array)
-            .expect("couldnt create vbo for chunk");
-        foliage_vbo.bind();
-        unsafe {
+        });
+        let foliage = glwrappers::RenderBuffer::new(|| unsafe {
             ogl33::glVertexAttribPointer(
                 0,
                 3,
@@ -555,41 +535,39 @@ impl<'a> Chunk<'a> {
             ogl33::glEnableVertexAttribArray(2);
             ogl33::glEnableVertexAttribArray(1);
             ogl33::glEnableVertexAttribArray(0);
-        }
+        });
         Chunk {
-            blocks,
-            light: [[[15 << 12; 16]; 16]; 16],
-            vao,
-            vbo,
-            vertex_count: 0,
+            blocks: Mutex::new(blocks),
+            light: Mutex::new([[[15 << 12; 16]; 16]; 16]),
+            solid: Mutex::new(solid),
             position,
             block_registry,
-            transparent_vbo,
-            transparent_vao,
-            transparent_vertex_count: 0,
-            foliage_vbo,
-            foliage_vao,
-            foliage_vertex_count: 0,
-            front: None,
-            back: None,
-            left: None,
-            right: None,
-            up: None,
-            down: None,
-            dynamic_blocks,
+            transparent: Mutex::new(transparent),
+            foliage: Mutex::new(foliage),
+            front: Mutex::new(None),
+            back: Mutex::new(None),
+            left: Mutex::new(None),
+            right: Mutex::new(None),
+            up: Mutex::new(None),
+            down: Mutex::new(None),
+            dynamic_blocks: Mutex::new(dynamic_blocks),
         }
     }
-    pub fn set_block(&mut self, x: u8, y: u8, z: u8, block_type: u32, world: &mut World) {
+    pub fn set_block(&self, x: u8, y: u8, z: u8, block_type: u32, world: &World) {
         let position = BlockPosition {
             x: (self.position.x * 16) + x as i32,
             y: (self.position.y * 16) + y as i32,
             z: (self.position.z * 16) + z as i32,
         };
-        self.dynamic_blocks.remove(&position);
-        self.blocks[x as usize][y as usize][z as usize] = block_type;
-        world.chunk_mesh_updates.insert(self.position);
+        self.dynamic_blocks.lock().unwrap().remove(&position);
+        self.blocks.lock().unwrap()[x as usize][y as usize][z as usize] = block_type;
+        world
+            .chunk_mesh_updates
+            .lock()
+            .unwrap()
+            .insert(self.position);
         if self.block_registry.get_block(block_type).dynamic.is_some() {
-            self.dynamic_blocks.insert(
+            self.dynamic_blocks.lock().unwrap().insert(
                 position,
                 DynamicBlockData {
                     id: block_type,
@@ -599,14 +577,18 @@ impl<'a> Chunk<'a> {
             );
         }
     }
-    pub fn schedule_mesh_rebuild(&self, world: &mut World) {
-        world.chunk_mesh_updates.insert(self.position);
+    pub fn schedule_mesh_rebuild(&self, world: &World) {
+        world
+            .chunk_mesh_updates
+            .lock()
+            .unwrap()
+            .insert(self.position);
     }
     pub fn get_block(&self, x: u8, y: u8, z: u8) -> u32 {
-        return self.blocks[x as usize][y as usize][z as usize];
+        return self.blocks.lock().unwrap()[x as usize][y as usize][z as usize];
     }
     pub fn get_light(&self, x: u8, y: u8, z: u8) -> (u8, u8, u8) {
-        let light = self.light[x as usize][y as usize][z as usize];
+        let light = self.light.lock().unwrap()[x as usize][y as usize][z as usize];
         (
             (light & 15) as u8,
             ((light >> 4) & 15) as u8,
@@ -614,496 +596,527 @@ impl<'a> Chunk<'a> {
             //((light >> 12) & 15) as u8,
         )
     }
-    fn rebuild_chunk_mesh(&mut self, this: Rc<RefCell<Chunk<'a>>>, world: &mut World<'a>) {
-        if self.front.is_none()
-            || self.back.is_none()
-            || self.left.is_none()
-            || self.right.is_none()
-            || self.up.is_none()
-            || self.down.is_none()
-        {
-            return;
-        }
-        let front_chunk = self.front.as_deref().unwrap().borrow();
-        let back_chunk = self.back.as_deref().unwrap().borrow();
-        let left_chunk = self.left.as_deref().unwrap().borrow();
-        let right_chunk = self.right.as_deref().unwrap().borrow();
-        let up_chunk = self.up.as_deref().unwrap().borrow();
-        let down_chunk = self.down.as_deref().unwrap().borrow();
+    fn rebuild_chunk_mesh(&self, this: Arc<Chunk>, world: Arc<World>) {
+        let (front_chunk, back_chunk, left_chunk, right_chunk, up_chunk, down_chunk) = {
+            let front = self.front.lock().unwrap();
+            let back = self.back.lock().unwrap();
+            let left = self.left.lock().unwrap();
+            let right = self.right.lock().unwrap();
+            let up = self.up.lock().unwrap();
+            let down = self.down.lock().unwrap();
+            if front.is_none()
+                || back.is_none()
+                || left.is_none()
+                || right.is_none()
+                || up.is_none()
+                || down.is_none()
+            {
+                return;
+            }
+            (
+                front.as_ref().unwrap().clone(),
+                back.as_ref().unwrap().clone(),
+                left.as_ref().unwrap().clone(),
+                right.as_ref().unwrap().clone(),
+                up.as_ref().unwrap().clone(),
+                down.as_ref().unwrap().clone(),
+            )
+        };
+        world.clone().thread_pool.execute(move || {
+            let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
+            let mut transparent_vertices: Vec<glwrappers::Vertex> = Vec::new();
+            let mut foliage_vertices: Vec<glwrappers::Vertex> = Vec::new();
+            for bx in 0..16i32 {
+                let x = bx as f32;
+                for by in 0..16i32 {
+                    let y = by as f32;
+                    for bz in 0..16i32 {
+                        let z = bz as f32;
+                        let block_id =
+                            this.blocks.lock().unwrap()[bx as usize][by as usize][bz as usize];
+                        let block = this.block_registry.get_block(block_id);
+                        let position = BlockPosition {
+                            x: bx,
+                            y: by,
+                            z: bz,
+                        };
+                        match &block.render_type {
+                            BlockRenderType::Air => {}
+                            BlockRenderType::Cube(
+                                transparent,
+                                north,
+                                south,
+                                right,
+                                left,
+                                up,
+                                down,
+                            ) => {
+                                for face in Face::all() {
+                                    let face_offset = face.get_offset();
+                                    let neighbor_pos = position + face_offset;
+                                    let original_offset_in_chunk = position.chunk_offset();
+                                    let offset_in_chunk = neighbor_pos.chunk_offset();
+                                    let (neighbor_block, light) = match (BlockPosition {
+                                        x: original_offset_in_chunk.0 as i32 + face_offset.x,
+                                        y: original_offset_in_chunk.1 as i32 + face_offset.y,
+                                        z: original_offset_in_chunk.2 as i32 + face_offset.z,
+                                    }
+                                    .offset_from_origin_chunk())
+                                    {
+                                        Some(Face::Front) => (
+                                            front_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            front_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        Some(Face::Back) => (
+                                            back_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            back_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        Some(Face::Left) => (
+                                            left_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            left_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        Some(Face::Right) => (
+                                            right_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            right_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        Some(Face::Up) => (
+                                            up_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            up_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        Some(Face::Down) => (
+                                            down_chunk.blocks.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            down_chunk.light.lock().unwrap()
+                                                [offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                        None => (
+                                            this.blocks.lock().unwrap()[offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                            this.light.lock().unwrap()[offset_in_chunk.0 as usize]
+                                                [offset_in_chunk.1 as usize]
+                                                [offset_in_chunk.2 as usize],
+                                        ),
+                                    };
+                                    let neighbor_block =
+                                        this.block_registry.get_block(neighbor_block);
+                                    let neighbor_side_full = neighbor_block
+                                        .is_face_full(&face.opposite())
+                                        && !(neighbor_block.is_transparent()
+                                            && !block.is_transparent());
+                                    let texture = match face {
+                                        Face::Front => north,
+                                        Face::Back => south,
+                                        Face::Right => right,
+                                        Face::Left => left,
+                                        Face::Up => up,
+                                        Face::Down => down,
+                                    };
+                                    if !neighbor_side_full {
+                                        let face_vertices = face.get_vertices();
+                                        let uv = texture.get_coords();
+                                        let vertices = if *transparent {
+                                            &mut transparent_vertices
+                                        } else {
+                                            &mut vertices
+                                        };
+                                        let uv0 = face_vertices[0].1.map(uv);
+                                        let uv1 = face_vertices[1].1.map(uv);
+                                        let uv2 = face_vertices[2].1.map(uv);
+                                        let uv3 = face_vertices[3].1.map(uv);
 
-        let mut vertices: Vec<glwrappers::Vertex> = Vec::new();
-        let mut transparent_vertices: Vec<glwrappers::Vertex> = Vec::new();
-        let mut foliage_vertices: Vec<glwrappers::Vertex> = Vec::new();
-        for bx in 0..16i32 {
-            let x = bx as f32;
-            for by in 0..16i32 {
-                let y = by as f32;
-                for bz in 0..16i32 {
-                    let z = bz as f32;
-                    let block_id = self.blocks[bx as usize][by as usize][bz as usize];
-                    let block = self.block_registry.get_block(block_id);
-                    let position = BlockPosition {
-                        x: bx,
-                        y: by,
-                        z: bz,
-                    };
-                    match &block.render_type {
-                        BlockRenderType::Air => {}
-                        BlockRenderType::Cube(transparent, north, south, right, left, up, down) => {
-                            for face in Face::all() {
-                                let face_offset = face.get_offset();
-                                let neighbor_pos = position + face_offset;
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[0].0.x + x,
+                                            y: face_vertices[0].0.y + y,
+                                            z: face_vertices[0].0.z + z,
+                                            u: uv0.0,
+                                            v: uv0.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[1].0.x + x,
+                                            y: face_vertices[1].0.y + y,
+                                            z: face_vertices[1].0.z + z,
+                                            u: uv1.0,
+                                            v: uv1.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[2].0.x + x,
+                                            y: face_vertices[2].0.y + y,
+                                            z: face_vertices[2].0.z + z,
+                                            u: uv2.0,
+                                            v: uv2.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[2].0.x + x,
+                                            y: face_vertices[2].0.y + y,
+                                            z: face_vertices[2].0.z + z,
+                                            u: uv2.0,
+                                            v: uv2.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[3].0.x + x,
+                                            y: face_vertices[3].0.y + y,
+                                            z: face_vertices[3].0.z + z,
+                                            u: uv3.0,
+                                            v: uv3.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                        vertices.push(glwrappers::Vertex {
+                                            x: face_vertices[0].0.x + x,
+                                            y: face_vertices[0].0.y + y,
+                                            z: face_vertices[0].0.z + z,
+                                            u: uv0.0,
+                                            v: uv0.1,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                    }
+                                }
+                            }
+                            BlockRenderType::StaticModel(
+                                transparent,
+                                model,
+                                _,
+                                _,
+                                _,
+                                _,
+                                _,
+                                _,
+                                connections,
+                                foliage,
+                            ) => {
                                 let original_offset_in_chunk = position.chunk_offset();
-                                let offset_in_chunk = neighbor_pos.chunk_offset();
-                                let (neighbor_block, light) = match (BlockPosition {
-                                    x: original_offset_in_chunk.0 as i32 + face_offset.x,
-                                    y: original_offset_in_chunk.1 as i32 + face_offset.y,
-                                    z: original_offset_in_chunk.2 as i32 + face_offset.z,
-                                }
-                                .offset_from_origin_chunk())
-                                {
-                                    Some(Face::Front) => (
-                                        front_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        front_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    Some(Face::Back) => (
-                                        back_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        back_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    Some(Face::Left) => (
-                                        left_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        left_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    Some(Face::Right) => (
-                                        right_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        right_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    Some(Face::Up) => (
-                                        up_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        up_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    Some(Face::Down) => (
-                                        down_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        down_chunk.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
-                                    None => (
-                                        self.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                        self.light[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize],
-                                    ),
+                                let light = this.light.lock().unwrap()
+                                    [original_offset_in_chunk.0 as usize]
+                                    [original_offset_in_chunk.1 as usize]
+                                    [original_offset_in_chunk.2 as usize];
+                                let vertices = if *transparent {
+                                    &mut transparent_vertices
+                                } else if *foliage {
+                                    &mut foliage_vertices
+                                } else {
+                                    &mut vertices
                                 };
-                                let neighbor_block = self.block_registry.get_block(neighbor_block);
-                                let neighbor_side_full = neighbor_block
-                                    .is_face_full(&face.opposite())
-                                    && !(neighbor_block.is_transparent()
-                                        && !block.is_transparent());
-                                let texture = match face {
-                                    Face::Front => north,
-                                    Face::Back => south,
-                                    Face::Right => right,
-                                    Face::Left => left,
-                                    Face::Up => up,
-                                    Face::Down => down,
-                                };
-                                if !neighbor_side_full {
-                                    let face_vertices = face.get_vertices();
-                                    let uv = texture.get_coords();
-                                    let vertices = if *transparent {
-                                        &mut transparent_vertices
-                                    } else {
-                                        &mut vertices
+                                for face in Face::all() {
+                                    let face_offset = face.get_offset();
+                                    let neighbor_pos = position + face_offset;
+                                    let offset_in_chunk = neighbor_pos.chunk_offset();
+                                    let neighbor_block = match (BlockPosition {
+                                        x: original_offset_in_chunk.0 as i32 + face_offset.x,
+                                        y: original_offset_in_chunk.1 as i32 + face_offset.y,
+                                        z: original_offset_in_chunk.2 as i32 + face_offset.z,
+                                    }
+                                    .offset_from_origin_chunk())
+                                    {
+                                        Some(Face::Front) => front_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        Some(Face::Back) => back_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        Some(Face::Left) => left_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        Some(Face::Right) => right_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        Some(Face::Up) => up_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        Some(Face::Down) => down_chunk.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
+                                        None => this.blocks.lock().unwrap()
+                                            [offset_in_chunk.0 as usize]
+                                            [offset_in_chunk.1 as usize]
+                                            [offset_in_chunk.2 as usize],
                                     };
-                                    let uv0 = face_vertices[0].1.map(uv);
-                                    let uv1 = face_vertices[1].1.map(uv);
-                                    let uv2 = face_vertices[2].1.map(uv);
-                                    let uv3 = face_vertices[3].1.map(uv);
-
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[0].0.x + x,
-                                        y: face_vertices[0].0.y + y,
-                                        z: face_vertices[0].0.z + z,
-                                        u: uv0.0,
-                                        v: uv0.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[1].0.x + x,
-                                        y: face_vertices[1].0.y + y,
-                                        z: face_vertices[1].0.z + z,
-                                        u: uv1.0,
-                                        v: uv1.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[2].0.x + x,
-                                        y: face_vertices[2].0.y + y,
-                                        z: face_vertices[2].0.z + z,
-                                        u: uv2.0,
-                                        v: uv2.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[2].0.x + x,
-                                        y: face_vertices[2].0.y + y,
-                                        z: face_vertices[2].0.z + z,
-                                        u: uv2.0,
-                                        v: uv2.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[3].0.x + x,
-                                        y: face_vertices[3].0.y + y,
-                                        z: face_vertices[3].0.z + z,
-                                        u: uv3.0,
-                                        v: uv3.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
-                                    vertices.push(glwrappers::Vertex {
-                                        x: face_vertices[0].0.x + x,
-                                        y: face_vertices[0].0.y + y,
-                                        z: face_vertices[0].0.z + z,
-                                        u: uv0.0,
-                                        v: uv0.1,
-                                        render_data: block.render_data,
-                                        light,
-                                    });
+                                    if let Some(connection) =
+                                        connections.by_face(face).get(&neighbor_block)
+                                    {
+                                        connection.add_vertices_simple(
+                                            &mut |pos, u, v| {
+                                                vertices.push(Vertex {
+                                                    x: pos.x + 0.5,
+                                                    y: pos.y,
+                                                    z: pos.z + 0.5,
+                                                    u,
+                                                    v,
+                                                    render_data: block.render_data,
+                                                    light,
+                                                });
+                                            },
+                                            None,
+                                            Vec3 {
+                                                x: bx as f32,
+                                                y: by as f32,
+                                                z: bz as f32,
+                                            },
+                                            None,
+                                        );
+                                    }
                                 }
+                                model.add_vertices_simple(
+                                    &mut |pos, u, v| {
+                                        vertices.push(Vertex {
+                                            x: pos.x + 0.5,
+                                            y: pos.y,
+                                            z: pos.z + 0.5,
+                                            u,
+                                            v,
+                                            render_data: block.render_data,
+                                            light,
+                                        });
+                                    },
+                                    None,
+                                    Vec3 {
+                                        x: bx as f32,
+                                        y: by as f32,
+                                        z: bz as f32,
+                                    },
+                                    None,
+                                );
                             }
-                        }
-                        BlockRenderType::StaticModel(
-                            transparent,
-                            model,
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            _,
-                            connections,
-                            foliage,
-                        ) => {
-                            let original_offset_in_chunk = position.chunk_offset();
-                            let light = self.light[original_offset_in_chunk.0 as usize]
-                                [original_offset_in_chunk.1 as usize]
-                                [original_offset_in_chunk.2 as usize];
-                            let vertices = if *transparent {
-                                &mut transparent_vertices
-                            } else if *foliage {
-                                &mut foliage_vertices
-                            } else {
-                                &mut vertices
-                            };
-                            for face in Face::all() {
-                                let face_offset = face.get_offset();
-                                let neighbor_pos = position + face_offset;
-                                let offset_in_chunk = neighbor_pos.chunk_offset();
-                                let neighbor_block = match (BlockPosition {
-                                    x: original_offset_in_chunk.0 as i32 + face_offset.x,
-                                    y: original_offset_in_chunk.1 as i32 + face_offset.y,
-                                    z: original_offset_in_chunk.2 as i32 + face_offset.z,
-                                }
-                                .offset_from_origin_chunk())
-                                {
-                                    Some(Face::Front) => {
-                                        front_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Back) => {
-                                        back_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Left) => {
-                                        left_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Right) => {
-                                        right_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Up) => {
-                                        up_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    Some(Face::Down) => {
-                                        down_chunk.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                    None => {
-                                        self.blocks[offset_in_chunk.0 as usize]
-                                            [offset_in_chunk.1 as usize]
-                                            [offset_in_chunk.2 as usize]
-                                    }
-                                };
-                                if let Some(connection) =
-                                    connections.by_face(face).get(&neighbor_block)
-                                {
-                                    connection.add_vertices_simple(
-                                        &mut |pos, u, v| {
-                                            vertices.push(Vertex {
-                                                x: pos.x + 0.5,
-                                                y: pos.y,
-                                                z: pos.z + 0.5,
-                                                u,
-                                                v,
-                                                render_data: block.render_data,
-                                                light,
-                                            });
-                                            self.vertex_count += 1;
+                            BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
+                                let original_offset_in_chunk = position.chunk_offset();
+                                let light = this.light.lock().unwrap()
+                                    [original_offset_in_chunk.0 as usize]
+                                    [original_offset_in_chunk.1 as usize]
+                                    [original_offset_in_chunk.2 as usize];
+                                let mut face_creator =
+                                    |p1: Position,
+                                     p2: Position,
+                                     p3: Position,
+                                     p4: Position,
+                                     uv: (f32, f32, f32, f32),
+                                     render_data: u8,
+                                     light: u16| {
+                                        let v1 = Vertex {
+                                            x: p1.x,
+                                            y: p1.y,
+                                            z: p1.z,
+                                            u: uv.0,
+                                            v: uv.1,
+                                            render_data,
+                                            light,
+                                        };
+                                        let v2 = Vertex {
+                                            x: p2.x,
+                                            y: p2.y,
+                                            z: p2.z,
+                                            u: uv.2,
+                                            v: uv.1,
+                                            render_data,
+                                            light,
+                                        };
+                                        let v3 = Vertex {
+                                            x: p3.x,
+                                            y: p3.y,
+                                            z: p3.z,
+                                            u: uv.2,
+                                            v: uv.3,
+                                            render_data,
+                                            light,
+                                        };
+                                        let v4 = Vertex {
+                                            x: p4.x,
+                                            y: p4.y,
+                                            z: p4.z,
+                                            u: uv.0,
+                                            v: uv.3,
+                                            render_data,
+                                            light,
+                                        };
+                                        foliage_vertices.push(v1);
+                                        foliage_vertices.push(v2);
+                                        foliage_vertices.push(v3);
+                                        foliage_vertices.push(v3);
+                                        foliage_vertices.push(v4);
+                                        foliage_vertices.push(v1);
+                                    };
+                                if let Some(texture1) = texture1 {
+                                    face_creator.call_mut((
+                                        Position {
+                                            x: x + 0.01,
+                                            y: y + 0.99,
+                                            z,
                                         },
-                                        None,
-                                        Vec3 {
-                                            x: bx as f32,
-                                            y: by as f32,
-                                            z: bz as f32,
+                                        Position {
+                                            x: x + 0.99,
+                                            y: y + 0.99,
+                                            z: z + 0.99,
                                         },
-                                        None,
-                                    );
+                                        Position {
+                                            x: x + 0.99,
+                                            y,
+                                            z: z + 0.99,
+                                        },
+                                        Position { x: x + 0.01, y, z },
+                                        texture1.get_coords(),
+                                        block.render_data,
+                                        light,
+                                    ));
                                 }
-                            }
-                            model.add_vertices_simple(
-                                &mut |pos, u, v| {
-                                    vertices.push(Vertex {
-                                        x: pos.x + 0.5,
-                                        y: pos.y,
-                                        z: pos.z + 0.5,
-                                        u,
-                                        v,
-                                        render_data: block.render_data,
+                                if let Some(texture2) = texture2 {
+                                    face_creator.call_mut((
+                                        Position {
+                                            x: x + 0.99,
+                                            y: y + 0.99,
+                                            z,
+                                        },
+                                        Position {
+                                            x: x + 0.01,
+                                            y: y + 0.99,
+                                            z: z + 0.99,
+                                        },
+                                        Position {
+                                            x: x + 0.01,
+                                            y,
+                                            z: z + 1.,
+                                        },
+                                        Position { x: x + 0.99, y, z },
+                                        texture2.get_coords(),
+                                        block.render_data,
                                         light,
-                                    });
-                                    self.vertex_count += 1;
-                                },
-                                None,
-                                Vec3 {
-                                    x: bx as f32,
-                                    y: by as f32,
-                                    z: bz as f32,
-                                },
-                                None,
-                            );
-                        }
-                        BlockRenderType::Foliage(texture1, texture2, texture3, texture4) => {
-                            let original_offset_in_chunk = position.chunk_offset();
-                            let light = self.light[original_offset_in_chunk.0 as usize]
-                                [original_offset_in_chunk.1 as usize]
-                                [original_offset_in_chunk.2 as usize];
-                            let mut face_creator =
-                                |p1: Position,
-                                 p2: Position,
-                                 p3: Position,
-                                 p4: Position,
-                                 uv: (f32, f32, f32, f32),
-                                 render_data: u8,
-                                 light: u16| {
-                                    let v1 = Vertex {
-                                        x: p1.x,
-                                        y: p1.y,
-                                        z: p1.z,
-                                        u: uv.0,
-                                        v: uv.1,
-                                        render_data,
+                                    ));
+                                }
+                                if let Some(texture3) = texture3 {
+                                    face_creator.call_mut((
+                                        Position {
+                                            x: x + 0.5,
+                                            y: y + 0.99,
+                                            z,
+                                        },
+                                        Position {
+                                            x: x + 0.5,
+                                            y: y + 0.99,
+                                            z: z + 0.99,
+                                        },
+                                        Position {
+                                            x: x + 0.5,
+                                            y,
+                                            z: z + 0.99,
+                                        },
+                                        Position { x: x + 0.5, y, z },
+                                        texture3.get_coords(),
+                                        block.render_data,
                                         light,
-                                    };
-                                    let v2 = Vertex {
-                                        x: p2.x,
-                                        y: p2.y,
-                                        z: p2.z,
-                                        u: uv.2,
-                                        v: uv.1,
-                                        render_data,
+                                    ));
+                                }
+                                if let Some(texture4) = texture4 {
+                                    face_creator.call_mut((
+                                        Position {
+                                            x: x + 0.1,
+                                            y: y + 0.99,
+                                            z: z + 0.5,
+                                        },
+                                        Position {
+                                            x: x + 0.99,
+                                            y: y + 0.99,
+                                            z: z + 0.5,
+                                        },
+                                        Position {
+                                            x: x + 0.99,
+                                            y,
+                                            z: z + 0.5,
+                                        },
+                                        Position {
+                                            x: x + 0.01,
+                                            y,
+                                            z: z + 0.5,
+                                        },
+                                        texture4.get_coords(),
+                                        block.render_data,
                                         light,
-                                    };
-                                    let v3 = Vertex {
-                                        x: p3.x,
-                                        y: p3.y,
-                                        z: p3.z,
-                                        u: uv.2,
-                                        v: uv.3,
-                                        render_data,
-                                        light,
-                                    };
-                                    let v4 = Vertex {
-                                        x: p4.x,
-                                        y: p4.y,
-                                        z: p4.z,
-                                        u: uv.0,
-                                        v: uv.3,
-                                        render_data,
-                                        light,
-                                    };
-                                    foliage_vertices.push(v1);
-                                    foliage_vertices.push(v2);
-                                    foliage_vertices.push(v3);
-                                    foliage_vertices.push(v3);
-                                    foliage_vertices.push(v4);
-                                    foliage_vertices.push(v1);
-                                };
-                            if let Some(texture1) = texture1 {
-                                face_creator.call_mut((
-                                    Position {
-                                        x: x + 0.01,
-                                        y: y + 0.99,
-                                        z,
-                                    },
-                                    Position {
-                                        x: x + 0.99,
-                                        y: y + 0.99,
-                                        z: z + 0.99,
-                                    },
-                                    Position {
-                                        x: x + 0.99,
-                                        y,
-                                        z: z + 0.99,
-                                    },
-                                    Position { x: x + 0.01, y, z },
-                                    texture1.get_coords(),
-                                    block.render_data,
-                                    light,
-                                ));
-                            }
-                            if let Some(texture2) = texture2 {
-                                face_creator.call_mut((
-                                    Position {
-                                        x: x + 0.99,
-                                        y: y + 0.99,
-                                        z,
-                                    },
-                                    Position {
-                                        x: x + 0.01,
-                                        y: y + 0.99,
-                                        z: z + 0.99,
-                                    },
-                                    Position {
-                                        x: x + 0.01,
-                                        y,
-                                        z: z + 1.,
-                                    },
-                                    Position { x: x + 0.99, y, z },
-                                    texture2.get_coords(),
-                                    block.render_data,
-                                    light,
-                                ));
-                            }
-                            if let Some(texture3) = texture3 {
-                                face_creator.call_mut((
-                                    Position {
-                                        x: x + 0.5,
-                                        y: y + 0.99,
-                                        z,
-                                    },
-                                    Position {
-                                        x: x + 0.5,
-                                        y: y + 0.99,
-                                        z: z + 0.99,
-                                    },
-                                    Position {
-                                        x: x + 0.5,
-                                        y,
-                                        z: z + 0.99,
-                                    },
-                                    Position { x: x + 0.5, y, z },
-                                    texture3.get_coords(),
-                                    block.render_data,
-                                    light,
-                                ));
-                            }
-                            if let Some(texture4) = texture4 {
-                                face_creator.call_mut((
-                                    Position {
-                                        x: x + 0.1,
-                                        y: y + 0.99,
-                                        z: z + 0.5,
-                                    },
-                                    Position {
-                                        x: x + 0.99,
-                                        y: y + 0.99,
-                                        z: z + 0.5,
-                                    },
-                                    Position {
-                                        x: x + 0.99,
-                                        y,
-                                        z: z + 0.5,
-                                    },
-                                    Position {
-                                        x: x + 0.01,
-                                        y,
-                                        z: z + 0.5,
-                                    },
-                                    texture4.get_coords(),
-                                    block.render_data,
-                                    light,
-                                ));
+                                    ));
+                                }
                             }
                         }
                     }
                 }
             }
-        }
-        self.vertex_count = vertices.len() as u32;
-        self.vbo
-            .upload_data(bytemuck::cast_slice(&vertices), ogl33::GL_STATIC_DRAW);
-        self.transparent_vertex_count = transparent_vertices.len() as u32;
-        self.transparent_vbo.upload_data(
-            bytemuck::cast_slice(&transparent_vertices),
-            ogl33::GL_STATIC_DRAW,
-        );
-        self.foliage_vertex_count = foliage_vertices.len() as u32;
-        self.foliage_vbo.upload_data(
-            bytemuck::cast_slice(&foliage_vertices),
-            ogl33::GL_STATIC_DRAW,
-        );
+            this.solid.lock().unwrap().upload(&vertices);
+            this.transparent
+                .lock()
+                .unwrap()
+                .upload(&transparent_vertices);
+            this.foliage.lock().unwrap().upload(&foliage_vertices);
 
-        if self.vertex_count > 0 || self.foliage_vertex_count > 0 {
-            world.solid_chunks.insert(self.position, this.clone());
-        } else {
-            world.solid_chunks.remove(&self.position);
-        }
-        if self.transparent_vertex_count > 0 {
-            world.transparent_chunks.insert(self.position, this.clone());
-        } else {
-            world.transparent_chunks.remove(&self.position);
-        }
+            if vertices.len() > 0 || foliage_vertices.len() > 0 {
+                world
+                    .solid_chunks
+                    .lock()
+                    .unwrap()
+                    .insert(this.position, this.clone());
+            } else {
+                world.solid_chunks.lock().unwrap().remove(&this.position);
+            }
+            if transparent_vertices.len() > 0 {
+                world
+                    .transparent_chunks
+                    .lock()
+                    .unwrap()
+                    .insert(this.position, this.clone());
+            } else {
+                world
+                    .transparent_chunks
+                    .lock()
+                    .unwrap()
+                    .remove(&this.position);
+            }
+        });
     }
     pub fn render(
-        &mut self,
+        &self,
         shader: &glwrappers::Shader,
         render_foliage: bool,
         rendered_chunks_stat: &mut (i32, i32, i32, i32, i32),
@@ -1111,45 +1124,47 @@ impl<'a> Chunk<'a> {
         /*if self.modified {
             self.modified = !self.rebuild_chunk_mesh();
         }*/
-        if true {
-            /* !self.modified*/
-            if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
-                shader.set_uniform_matrix(
-                    shader
-                        .get_uniform_location("model\0")
-                        .expect("uniform model not found"),
-                    Mat4::from_translation(Vec3 {
-                        x: (self.position.x * 16) as f32,
-                        y: (self.position.y * 16) as f32,
-                        z: (self.position.z * 16) as f32,
-                    }),
-                );
-            }
-            if self.vertex_count != 0 {
+        //if true {
+        /* !self.modified*/
+        //if self.vertex_count != 0 || (self.foliage_vertex_count != 0 && render_foliage) {
+        shader.set_uniform_matrix(
+            shader
+                .get_uniform_location("model\0")
+                .expect("uniform model not found"),
+            Mat4::from_translation(Vec3 {
+                x: (self.position.x * 16) as f32,
+                y: (self.position.y * 16) as f32,
+                z: (self.position.z * 16) as f32,
+            }),
+        );
+        //}
+        {
+            let solid = self.solid.lock().unwrap();
+            if solid.has_data() {
                 rendered_chunks_stat.0 += 1;
-                self.vao.bind();
-                unsafe {
-                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.vertex_count as i32);
-                }
+                solid.draw_triangles();
             }
-            if self.foliage_vertex_count != 0 && render_foliage {
+        }
+        {
+            let foliage = self.foliage.lock().unwrap();
+            if foliage.has_data() && render_foliage {
                 rendered_chunks_stat.2 += 1;
-                self.foliage_vao.bind();
                 unsafe {
                     ogl33::glDisable(GL_CULL_FACE);
-
-                    ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.foliage_vertex_count as i32);
+                    foliage.draw_triangles();
                     ogl33::glEnable(GL_CULL_FACE);
                 }
             }
         }
+        //}
     }
     pub fn render_transparent(
         &self,
         shader: &glwrappers::Shader,
         rendered_chunks_stat: &mut (i32, i32, i32, i32, i32),
     ) {
-        if self.transparent_vertex_count != 0 {
+        let transparent = self.transparent.lock().unwrap();
+        if transparent.has_data() {
             rendered_chunks_stat.1 += 1;
             shader.set_uniform_matrix(
                 shader
@@ -1161,10 +1176,7 @@ impl<'a> Chunk<'a> {
                     z: (self.position.z * 16) as f32,
                 }),
             );
-            self.transparent_vao.bind();
-            unsafe {
-                ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, self.transparent_vertex_count as i32);
-            }
+            transparent.draw_triangles();
         }
     }
 }
@@ -1435,138 +1447,141 @@ impl AtlassedTexture {
     }
 }
 
-pub struct World<'a> {
-    pub chunks: IndexMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
-    block_registry: &'a BlockRegistry,
-    pub light_updates: BTreeSet<BlockPosition>,
-    pub chunk_mesh_updates: FxHashSet<ChunkPosition>,
-    pub solid_chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
-    pub transparent_chunks: FxHashMap<ChunkPosition, Rc<RefCell<Chunk<'a>>>>,
+pub struct World {
+    pub chunks: Mutex<IndexMap<ChunkPosition, Arc<Chunk>>>,
+    block_registry: Arc<BlockRegistry>,
+    pub light_updates: Mutex<BTreeSet<BlockPosition>>,
+    pub chunk_mesh_updates: Mutex<FxHashSet<ChunkPosition>>,
+    pub solid_chunks: Mutex<FxHashMap<ChunkPosition, Arc<Chunk>>>,
+    pub transparent_chunks: Mutex<FxHashMap<ChunkPosition, Arc<Chunk>>>,
+    pub thread_pool: ThreadPool,
+    pub this: Weak<World>,
 }
-impl<'a> World<'a> {
-    pub fn new(block_registry: &'a BlockRegistry) -> Self {
-        World {
-            chunks: IndexMap::default(),
+impl World {
+    pub fn new(block_registry: Arc<BlockRegistry>) -> Arc<Self> {
+        Arc::new_cyclic(|this| World {
+            chunks: Mutex::new(IndexMap::default()),
             block_registry,
-            light_updates: BTreeSet::new(),
-            chunk_mesh_updates: FxHashSet::default(),
-            solid_chunks: FxHashMap::default(),
-            transparent_chunks: FxHashMap::default(),
-        }
+            light_updates: Mutex::new(BTreeSet::new()),
+            chunk_mesh_updates: Mutex::new(FxHashSet::default()),
+            solid_chunks: Mutex::new(FxHashMap::default()),
+            transparent_chunks: Mutex::new(FxHashMap::default()),
+            thread_pool: ThreadPool::new(4),
+            this: this.clone(),
+        })
     }
-    pub fn load_chunk(
-        &mut self,
-        position: ChunkPosition,
-        blocks: [[[u32; 16]; 16]; 16],
-    ) -> RefMut<'_, Chunk<'a>> {
-        if !self.chunks.contains_key(&position) {
-            let chunk = Rc::new(RefCell::new(Chunk::new(
+    pub fn load_chunk(&self, position: ChunkPosition, blocks: [[[u32; 16]; 16]; 16]) -> Arc<Chunk> {
+        if !self.chunks.lock().unwrap().contains_key(&position) {
+            let chunk = Arc::new(Chunk::new(
                 position,
-                self.block_registry,
+                self.block_registry.clone(),
                 blocks,
                 self,
-            )));
-            self.chunks.insert(position, chunk.clone());
-            self.chunk_mesh_updates.insert(position);
+            ));
+            self.chunks.lock().unwrap().insert(position, chunk.clone());
+            self.chunk_mesh_updates.lock().unwrap().insert(position);
             for face in Face::all() {
                 let offset = face.get_offset();
                 let neighbor = self
                     .chunks
+                    .lock()
+                    .unwrap()
                     .get(&position.add(offset.x, offset.y, offset.z))
                     .map(|chunk| chunk.clone());
                 {
-                    chunk
-                        .borrow_mut()
-                        .set_neighbor_by_face(&face, neighbor.clone());
+                    chunk.set_neighbor_by_face(&face, neighbor.clone());
                 }
                 {
                     if let Some(neighbor) = neighbor {
-                        let mut neighbor = neighbor.borrow_mut();
                         neighbor.set_neighbor_by_face(&face.opposite(), Some(chunk.clone()));
                         neighbor.schedule_mesh_rebuild(self);
                     }
                 }
             }
-            self.light_updates.insert(BlockPosition {
+            self.light_updates.lock().unwrap().insert(BlockPosition {
                 x: position.x * 16 + 8,
                 y: position.y * 16 + 15,
                 z: position.z * 16 + 8,
             });
         }
-        self.chunks.get_mut(&position).unwrap().borrow_mut()
+        self.chunks
+            .lock()
+            .unwrap()
+            .get_mut(&position)
+            .unwrap()
+            .clone()
     }
-    pub fn unload_chunk(&mut self, position: ChunkPosition) {
+    pub fn unload_chunk(&self, position: ChunkPosition) {
         for face in Face::all() {
             let offset = face.get_offset();
-            let neighbor = self.chunks.get(&position.add(offset.x, offset.y, offset.z));
+            let chunks = self.chunks.lock().unwrap();
+            let neighbor = chunks.get(&position.add(offset.x, offset.y, offset.z));
             {
                 if let Some(neighbor) = neighbor {
-                    neighbor
-                        .borrow_mut()
-                        .set_neighbor_by_face(&face.opposite(), None);
+                    neighbor.set_neighbor_by_face(&face.opposite(), None);
                 }
             }
         }
-        self.chunks.remove(&position);
-        self.solid_chunks.remove(&position);
-        self.transparent_chunks.remove(&position);
+        self.chunks.lock().unwrap().remove(&position);
+        self.solid_chunks.lock().unwrap().remove(&position);
+        self.transparent_chunks.lock().unwrap().remove(&position);
     }
-    pub fn get_chunk(&self, position: ChunkPosition) -> Option<Ref<'_, Chunk<'a>>> {
-        match self.chunks.get(&position) {
-            Some(chunk) => Some(chunk.borrow()),
-            None => None,
-        }
-    }
-    pub fn get_chunk_clone(&self, position: ChunkPosition) -> Option<Rc<RefCell<Chunk<'a>>>> {
-        match self.chunks.get(&position) {
+    pub fn get_chunk(&self, position: ChunkPosition) -> Option<Arc<Chunk>> {
+        match self.chunks.lock().unwrap().get(&position) {
             Some(chunk) => Some(chunk.clone()),
             None => None,
         }
     }
-    pub fn get_mut_chunk(&mut self, position: ChunkPosition) -> Option<RefMut<'_, Chunk<'a>>> {
-        self.chunks
-            .get_mut(&position)
-            .map(|chunk| chunk.borrow_mut())
+    pub fn get_chunk_clone(&self, position: ChunkPosition) -> Option<Arc<Chunk>> {
+        match self.chunks.lock().unwrap().get(&position) {
+            Some(chunk) => Some(chunk.clone()),
+            None => None,
+        }
     }
-    pub fn set_block(&mut self, position: BlockPosition, id: u32) -> Result<(), ()> {
+    pub fn get_mut_chunk(&self, position: ChunkPosition) -> Option<Arc<Chunk>> {
+        self.chunks
+            .lock()
+            .unwrap()
+            .get_mut(&position)
+            .map(|chunk| chunk.clone())
+    }
+    pub fn set_block(&self, position: BlockPosition, id: u32) -> Result<(), ()> {
         let chunk_position = position.to_chunk_pos();
         let offset = position.chunk_offset();
         if offset.0 == 0 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(-1, 0, 0)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
         if offset.0 == 15 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(1, 0, 0)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
         if offset.1 == 0 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, -1, 0)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
         if offset.1 == 15 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 1, 0)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
         if offset.2 == 0 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 0, -1)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
         if offset.2 == 15 {
             if let Some(chunk) = self.get_chunk_clone(chunk_position.add(0, 0, 1)) {
-                chunk.borrow().schedule_mesh_rebuild(self);
+                chunk.schedule_mesh_rebuild(self);
             }
         }
-        self.light_updates.insert(position);
+        self.light_updates.lock().unwrap().insert(position);
         match self.get_chunk_clone(chunk_position) {
             Some(chunk) => {
-                chunk
-                    .borrow_mut()
-                    .set_block(offset.0, offset.1, offset.2, id, self);
+                chunk.set_block(offset.0, offset.1, offset.2, id, self);
                 Ok(())
             }
             None => Err(()),
@@ -1586,12 +1601,14 @@ impl<'a> World<'a> {
                 Some(chunk.get_light(offset.0, offset.1, offset.2))
             })
     }
-    pub fn set_light(&mut self, position: BlockPosition, light: (u8, u8, u8)) {
-        if let Some(mut chunk) = self.get_mut_chunk(position.to_chunk_pos()) {
+    pub fn set_light(&self, position: BlockPosition, light: (u8, u8, u8)) {
+        if let Some(chunk) = self.get_mut_chunk(position.to_chunk_pos()) {
             let offset = position.chunk_offset();
             let light = light.0 as u16 | ((light.1 as u16) << 4) | ((light.2 as u16) << 8);
             //| ((light.3 as u16) << 12);
-            chunk.light[offset.0 as usize][offset.1 as usize][offset.2 as usize] = light;
+            chunk.light.lock().unwrap()[offset.0 as usize][offset.1 as usize][offset.2 as usize] =
+                light;
+            chunk.schedule_mesh_rebuild(self);
             //chunk.modified = true;
             //todo
         }
@@ -1599,10 +1616,10 @@ impl<'a> World<'a> {
     pub fn loaded(&self, position: ChunkPosition) -> bool {
         self.get_chunk(position).is_some()
     }
-    pub fn update_lights(&mut self) -> u32 {
-        self.light_updates.clear();
-        let updates = self.light_updates.len() as u32;
-        while let Some(light_update) = self.light_updates.pop_last() {
+    pub fn update_lights(&self) -> u32 {
+        self.light_updates.lock().unwrap().clear();
+        let updates = self.light_updates.lock().unwrap().len() as u32;
+        while let Some(light_update) = self.light_updates.lock().unwrap().pop_last() {
             if self.get_block(light_update).map_or(false, |b| {
                 !self.block_registry.get_block(b).is_light_blocking()
             }) {
@@ -1642,7 +1659,7 @@ impl<'a> World<'a> {
                             y: light_update.y + face_offset.y,
                             z: light_update.z + face_offset.z,
                         };
-                        self.light_updates.insert(block_pos);
+                        self.light_updates.lock().unwrap().insert(block_pos);
                     }
                 }
             }
@@ -1650,28 +1667,32 @@ impl<'a> World<'a> {
         updates
     }
     pub fn render(
-        &mut self,
+        &self,
         shader: &glwrappers::Shader,
         time: f32,
         player_position: ChunkPosition,
     ) -> (i32, i32, i32, i32, i32) {
-        let mesh_updates: Vec<_> = self.chunk_mesh_updates.drain().collect(); //todo: optimize
+        let mesh_updates: Vec<_> = self.chunk_mesh_updates.lock().unwrap().drain().collect(); //todo: optimize
         for mesh_update in mesh_updates {
             if let Some(chunk) = self.get_chunk_clone(mesh_update) {
                 let cloned_chunk = chunk.clone();
-                chunk.borrow_mut().rebuild_chunk_mesh(cloned_chunk, self);
+                chunk.rebuild_chunk_mesh(cloned_chunk, self.this.upgrade().unwrap());
             }
         }
         unsafe {
             ogl33::glEnable(GL_CULL_FACE);
         }
         let light_updates = self.update_lights() as i32;
-        let mut rendered_chunks_stat = (0, 0, 0, self.chunks.len() as i32, light_updates);
+        let mut rendered_chunks_stat = (
+            0,
+            0,
+            0,
+            self.chunks.lock().unwrap().len() as i32,
+            light_updates,
+        );
         shader.set_uniform_float(shader.get_uniform_location("time\0").unwrap(), time);
-        for chunk in self.solid_chunks.values() {
-            chunk
-                .borrow_mut()
-                .render(shader, true, &mut rendered_chunks_stat);
+        for chunk in self.solid_chunks.lock().unwrap().values() {
+            chunk.render(shader, true, &mut rendered_chunks_stat);
         }
         /*for chunk in self.chunks.values() {
             let mut borrowed_chunk = chunk.borrow_mut();
@@ -1694,10 +1715,8 @@ impl<'a> World<'a> {
             ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDisable(ogl33::GL_CULL_FACE);
         }
-        for chunk in self.transparent_chunks.values() {
-            chunk
-                .borrow()
-                .render_transparent(shader, &mut rendered_chunks_stat);
+        for chunk in self.transparent_chunks.lock().unwrap().values() {
+            chunk.render_transparent(shader, &mut rendered_chunks_stat);
         }
         unsafe {
             ogl33::glDisable(ogl33::GL_BLEND);
