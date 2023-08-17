@@ -1655,7 +1655,11 @@ impl<'a> World<'a> {
         time: f32,
         player_position: ChunkPosition,
     ) -> (i32, i32, i32, i32, i32) {
-        let mesh_updates: Vec<_> = self.chunk_mesh_updates.drain().collect(); //todo: optimize
+        let mesh_updates: Vec<_> = self
+            .chunk_mesh_updates
+            .extract_if(|_| true)
+            .take(200)
+            .collect(); //todo: optimize
         for mesh_update in mesh_updates {
             if let Some(chunk) = self.get_chunk_clone(mesh_update) {
                 let cloned_chunk = chunk.clone();
