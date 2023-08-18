@@ -260,8 +260,7 @@ fn main() {
                                     /*.expect(format!("chunk not loaded at {x} {y} {z}").as_str())*/;
                             }
                             NetworkMessageS2C::LoadChunk(x, y, z, blocks) => {
-                                let mut decoder =
-                                    libflate::zlib::Decoder::new(blocks.as_slice()).unwrap();
+                                let mut decoder = flate2::read::GzDecoder::new(blocks.as_slice());
                                 let mut blocks_data = Vec::new();
                                 std::io::copy(&mut decoder, &mut blocks_data).unwrap();
                                 let mut blocks = [[[0u32; 16]; 16]; 16];
