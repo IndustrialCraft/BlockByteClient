@@ -139,7 +139,7 @@ impl Model {
         );
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Bone {
     child_bones: Vec<Bone>,
     cube_elements: Vec<CubeElement>,
@@ -269,7 +269,7 @@ impl Bone {
     fn create_rotation_matrix_with_origin(rotation: &Vec3, origin: &Vec3) -> Mat4 {
         let translation = Mat4::from_translation(origin.clone());
         translation
-            * Mat4::from_euler_angles(-rotation.z, -rotation.x, -rotation.y)
+            * Mat4::from_euler_angles(rotation.z, rotation.x, rotation.y)
             * translation.inversed()
     }
     fn create_cube<F>(
@@ -553,7 +553,7 @@ impl Bone {
         vertex_consumer.call_mut(v1);
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CubeElement {
     position: Vec3,
     rotation: Vec3,
@@ -590,14 +590,14 @@ impl CubeElement {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct CubeElementFace {
     u1: f32,
     v1: f32,
     u2: f32,
     v2: f32,
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct ItemElement {
     position: Vec3,
     rotation: Vec3,
@@ -614,7 +614,7 @@ impl ItemElement {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct AnimationData {
     position: Vec<AnimationKeyframe>,
     rotation: Vec<AnimationKeyframe>,
@@ -687,7 +687,7 @@ impl AnimationData {
         let first = first.map(||)*/
     }
 }
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct AnimationKeyframe {
     data: Vec3,
     time: f32,
