@@ -240,6 +240,7 @@ fn main() {
     let mut orthographic_projection = false;
     let mut not_loaded_chunks_blocks: FxHashMap<ChunkPosition, Vec<(u8, u8, u8, u32)>> =
         FxHashMap::default();
+    let mut received_first_teleport = false;
     'main_loop: loop {
         'message_loop: loop {
             match socket.read_message() {
@@ -404,6 +405,7 @@ fn main() {
                                 camera.position.x = x;
                                 camera.position.y = y;
                                 camera.position.z = z;
+                                received_first_teleport = true;
                             }
                             NetworkMessageS2C::BlockAnimation(x, y, z, animation) => {
                                 let position = BlockPosition { x, y, z };
@@ -726,20 +728,21 @@ fn main() {
                     )
                     .unwrap();
             }
-            socket
-                .write_message(tungstenite::Message::Binary(
-                    NetworkMessageC2S::PlayerPosition(
-                        camera.position.x - 0.3,
-                        camera.position.y,
-                        camera.position.z - 0.3,
-                        camera.is_shifting(),
-                        camera.yaw_deg,
-                        camera.last_moved,
-                    )
-                    .to_data(),
-                ))
-                .unwrap();
-
+            if received_first_teleport{
+                socket
+                    .write_message(tungstenite::Message::Binary(
+                        NetworkMessageC2S::PlayerPosition(
+                            camera.position.x - 0.3,//todo: variable hitbox
+                            camera.position.y,
+                            camera.position.z - 0.3,
+                            camera.is_shifting(),
+                            camera.yaw_deg,
+                            camera.last_moved,
+                        )
+                        .to_data(),
+                    ))
+                    .unwrap();
+            }
             chunk_shader.use_program();
             let projection_view_loc = chunk_shader
                 .get_uniform_location("projection_view\0")
