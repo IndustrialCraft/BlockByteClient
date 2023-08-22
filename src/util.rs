@@ -140,7 +140,7 @@ pub enum NetworkMessageS2C {
     EntityAnimation(u32, u32) = 15,
     ChatMessage(String) = 16,
     PlayerAbilities(f32, MovementType) = 17,
-    TeleportPlayer(f32, f32, f32) = 18,
+    TeleportPlayer(f32, f32, f32, f32) = 18,
     BlockAnimation(i32, i32, i32, u32) = 19,
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -273,6 +273,7 @@ impl NetworkMessageS2C {
                 MovementType::from_data(&mut data),
             )),
             18 => Some(Self::TeleportPlayer(
+                data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
                 data.read_be().unwrap(),
