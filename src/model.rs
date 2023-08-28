@@ -728,15 +728,17 @@ impl<'a> ItemRenderer<'a> {
         F: FnMut(Vec3, f32, f32),
     {
         let render_data = self.items.get(&item.item).unwrap();
+        let depth = 0.02;
+
         match &render_data.model {
             util::ItemModel::Texture(texture) => {
                 Bone::create_face(
                     vertex_consumer,
                     *matrix * Vec4::new(position.x, position.y, position.z, 1.),
                     Corner::DownLeft,
-                    *matrix * Vec4::new(position.x, position.y, position.z + scale.y, 1.),
+                    *matrix * Vec4::new(position.x, position.y + scale.y, position.z, 1.),
                     Corner::UpLeft,
-                    *matrix * Vec4::new(position.x + scale.x, position.y, position.z + scale.y, 1.),
+                    *matrix * Vec4::new(position.x + scale.x, position.y + scale.y, position.z, 1.),
                     Corner::UpRight,
                     *matrix * Vec4::new(position.x + scale.x, position.y, position.z, 1.),
                     Corner::DownRight,
@@ -748,22 +750,21 @@ impl<'a> ItemRenderer<'a> {
                     },
                     &texture.texture,
                 );
-                let depth = 0.02;
                 Bone::create_face(
                     vertex_consumer,
-                    *matrix * Vec4::new(position.x, position.y + depth, position.z, 1.),
+                    *matrix * Vec4::new(position.x, position.y, position.z + depth, 1.),
                     Corner::DownLeft,
-                    *matrix * Vec4::new(position.x, position.y + depth, position.z + scale.y, 1.),
+                    *matrix * Vec4::new(position.x, position.y + scale.y, position.z + depth, 1.),
                     Corner::UpLeft,
                     *matrix
                         * Vec4::new(
                             position.x + scale.x,
-                            position.y + depth,
-                            position.z + scale.y,
+                            position.y + scale.y,
+                            position.z + depth,
                             1.,
                         ),
                     Corner::UpRight,
-                    *matrix * Vec4::new(position.x + scale.x, position.y + depth, position.z, 1.),
+                    *matrix * Vec4::new(position.x + scale.x, position.y, position.z + depth, 1.),
                     Corner::DownRight,
                     &CubeElementFace {
                         u1: 0.,
@@ -784,14 +785,14 @@ impl<'a> ItemRenderer<'a> {
                     Bone::create_face_uv(
                         vertex_consumer,
                         *matrix
-                            * Vec4::new(position.x + x1, position.y + depth, position.z + y1, 1.),
+                            * Vec4::new(position.x + x1, position.y + y1, position.z + depth, 1.),
                         (side.u, 1. - side.v),
-                        *matrix * Vec4::new(position.x + x1, position.y, position.z + y1, 1.),
+                        *matrix * Vec4::new(position.x + x1, position.y + y1, position.z, 1.),
                         (side.u, 1. - side.v),
-                        *matrix * Vec4::new(position.x + x2, position.y, position.z + y2, 1.),
+                        *matrix * Vec4::new(position.x + x2, position.y + y2, position.z, 1.),
                         (side.u, 1. - side.v),
                         *matrix
-                            * Vec4::new(position.x + x2, position.y + depth, position.z + y2, 1.),
+                            * Vec4::new(position.x + x2, position.y + y2, position.z + depth, 1.),
                         (side.u, 1. - side.v),
                         &texture.texture,
                     );
@@ -806,120 +807,253 @@ impl<'a> ItemRenderer<'a> {
                     crate::game::BlockRenderType::Cube(_, north, _, right, _, up, _) => {
                         let middle_x = scale.x * 13. / 26.;
                         let middle_y = scale.y * 4. / 6.;
-                        Bone::create_face(
-                            vertex_consumer,
-                            *matrix
-                                * Vec4::new(
-                                    position.x,
-                                    position.y,
-                                    position.z + (scale.y / 6. * 5.),
-                                    1.,
-                                ),
-                            Corner::UpLeft,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + middle_x,
-                                    position.y,
-                                    position.z + scale.y,
-                                    1.,
-                                ),
-                            Corner::DownLeft,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + scale.x,
-                                    position.y,
-                                    position.z + (scale.y / 6. * 5.),
-                                    1.,
-                                ),
-                            Corner::UpRight,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + middle_x,
-                                    position.y,
-                                    position.z + middle_y,
-                                    1.,
-                                ),
-                            Corner::DownRight,
-                            &CubeElementFace {
-                                u1: 0.,
-                                v1: 0.,
-                                u2: 1.,
-                                v2: 1.,
-                            },
-                            up,
-                        );
-                        Bone::create_face(
-                            vertex_consumer,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + middle_x,
-                                    position.y,
-                                    position.z + middle_y,
-                                    1.,
-                                ),
-                            Corner::UpLeft,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + scale.x,
-                                    position.y,
-                                    position.z + (scale.y * 5. / 6.),
-                                    1.,
-                                ),
-                            Corner::UpRight,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + scale.x,
-                                    position.y,
-                                    position.z + (scale.y * 7.5 / 25.),
-                                    1.,
-                                ),
-                            Corner::DownRight,
-                            *matrix * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
-                            Corner::DownLeft,
-                            &CubeElementFace {
-                                u1: 0.,
-                                v1: 0.,
-                                u2: 1.,
-                                v2: 1.,
-                            },
-                            north,
-                        );
-                        Bone::create_face(
-                            vertex_consumer,
-                            *matrix
-                                * Vec4::new(
-                                    position.x,
-                                    position.y,
-                                    position.z + (scale.y * 5. / 6.),
-                                    1.,
-                                ),
-                            Corner::UpLeft,
-                            *matrix
-                                * Vec4::new(
-                                    position.x + middle_x,
-                                    position.y,
-                                    position.z + middle_y,
-                                    1.,
-                                ),
-                            Corner::UpRight,
-                            *matrix * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
-                            Corner::DownRight,
-                            *matrix
-                                * Vec4::new(
-                                    position.x,
-                                    position.y,
-                                    position.z + (scale.y * 7.5 / 25.),
-                                    1.,
-                                ),
-                            Corner::DownLeft,
-                            &CubeElementFace {
-                                u1: 0.,
-                                v1: 0.,
-                                u2: 1.,
-                                v2: 1.,
-                            },
-                            right,
-                        );
+                        {
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y,
+                                        position.z + (scale.y / 6. * 5.),
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y,
+                                        position.z + scale.y,
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y,
+                                        position.z + (scale.y / 6. * 5.),
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::DownRight,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                up,
+                            );
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y,
+                                        position.z + (scale.y * 5. / 6.),
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y,
+                                        position.z + (scale.y * 7.5 / 25.),
+                                        1.,
+                                    ),
+                                Corner::DownRight,
+                                *matrix
+                                    * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
+                                Corner::DownLeft,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                north,
+                            );
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y,
+                                        position.z + (scale.y * 5. / 6.),
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(position.x + middle_x, position.y, position.z, 1.),
+                                Corner::DownRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y,
+                                        position.z + (scale.y * 7.5 / 25.),
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                right,
+                            );
+                        }
+                        {
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y + depth,
+                                        position.z + (scale.y / 6. * 5.),
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z + scale.y,
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y + depth,
+                                        position.z + (scale.y / 6. * 5.),
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::DownRight,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                up,
+                            );
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y + depth,
+                                        position.z + (scale.y * 5. / 6.),
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + scale.x,
+                                        position.y + depth,
+                                        position.z + (scale.y * 7.5 / 25.),
+                                        1.,
+                                    ),
+                                Corner::DownRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z,
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                north,
+                            );
+                            Bone::create_face(
+                                vertex_consumer,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y + depth,
+                                        position.z + (scale.y * 5. / 6.),
+                                        1.,
+                                    ),
+                                Corner::UpLeft,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z + middle_y,
+                                        1.,
+                                    ),
+                                Corner::UpRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + depth,
+                                        position.z,
+                                        1.,
+                                    ),
+                                Corner::DownRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x,
+                                        position.y + depth,
+                                        position.z + (scale.y * 7.5 / 25.),
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
+                                &CubeElementFace {
+                                    u1: 0.,
+                                    v1: 0.,
+                                    u2: 1.,
+                                    v2: 1.,
+                                },
+                                right,
+                            );
+                        }
+                        {}
                         /*quads.push(GUIQuad {
                             x1: x,
                             y1: y + (size / 6. * 5.),
