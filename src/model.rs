@@ -365,7 +365,7 @@ impl Bone {
             p111,
             Corner::DownRight,
             p110,
-            Corner::DownRight,
+            Corner::DownLeft,
             up,
             texture,
         );
@@ -1054,66 +1054,6 @@ impl<'a> ItemRenderer<'a> {
                             );
                         }
                         {}
-                        /*quads.push(GUIQuad {
-                            x1: x,
-                            y1: y + (size / 6. * 5.),
-                            x2: x + middle_x,
-                            y2: y + size,
-                            x3: x + size,
-                            y3: y + (size / 6. * 5.),
-                            x4: x + middle_x,
-                            y4: y + middle_y,
-                            color: Color {
-                                r: 1.,
-                                g: 1.,
-                                b: 1.,
-                                a: 1.,
-                            },
-                            u1: top_texture.0,
-                            v1: top_texture.1,
-                            u2: top_texture.2,
-                            v2: top_texture.3,
-                        });
-                        quads.push(GUIQuad {
-                            x1: x + middle_x,
-                            y1: y + middle_y,
-                            x2: x + size,
-                            y2: y + (size * 5. / 6.),
-                            x3: x + (size * 23. / 25.),
-                            y3: y + (size * 7.5 / 25.),
-                            x4: x + middle_x,
-                            y4: y,
-                            color: Color {
-                                r: 1.,
-                                g: 1.,
-                                b: 1.,
-                                a: 1.,
-                            },
-                            u1: front_texture.0,
-                            v1: front_texture.3,
-                            u2: front_texture.2,
-                            v2: front_texture.1,
-                        });
-                        quads.push(GUIQuad {
-                            x1: x,
-                            y1: y + (size * 5. / 6.),
-                            x2: x + middle_x,
-                            y2: y + middle_y,
-                            x3: x + middle_x,
-                            y3: y,
-                            x4: x + (size * 2. / 25.),
-                            y4: y + (size * 7.5 / 25.),
-                            color: Color {
-                                r: 1.,
-                                g: 1.,
-                                b: 1.,
-                                a: 1.,
-                            },
-                            u1: right_texture.0,
-                            v1: right_texture.3,
-                            u2: right_texture.2,
-                            v2: right_texture.1,
-                        });*/
                     }
                 }
             }
