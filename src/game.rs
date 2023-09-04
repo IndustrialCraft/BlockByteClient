@@ -1693,6 +1693,13 @@ impl<'a> World<'a> {
                 .distance_squared(&player_position)
                 .cmp(&b.position.distance_squared(&player_position))
         });*/
+        rendered_chunks_stat
+    }
+    pub fn render_transparent(
+        &self,
+        shader: &glwrappers::Shader,
+        rendered_chunk_stats: &mut (i32, i32, i32, i32, i32),
+    ) {
         unsafe {
             ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
             ogl33::glEnable(ogl33::GL_BLEND);
@@ -1701,12 +1708,11 @@ impl<'a> World<'a> {
         for chunk in self.transparent_chunks.values() {
             chunk
                 .borrow()
-                .render_transparent(shader, &mut rendered_chunks_stat);
+                .render_transparent(shader, rendered_chunk_stats);
         }
         unsafe {
             ogl33::glDisable(ogl33::GL_BLEND);
         }
-        rendered_chunks_stat
     }
 }
 pub struct Entity {

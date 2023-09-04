@@ -256,7 +256,6 @@ fn main() {
                                     .set_block(position, id){
                                          let entry = not_loaded_chunks_blocks.entry(position.to_chunk_pos()).or_insert_with(||Vec::new());
                                             entry.push((offset.0, offset.1, offset.2, id));
-                                        
                                     }
                                     /*.expect(format!("chunk not loaded at {x} {y} {z}").as_str())*/;
                             }
@@ -327,36 +326,22 @@ fn main() {
                             NetworkMessageS2C::BlockBreakTimeResponse(id, time) => {
                                 block_breaking_manager.on_block_break_time_response(id, time);
                             }
-                            NetworkMessageS2C::EntityAddItem(entity_id, item_index, item_id) => {
-                                entities.get_mut(&entity_id).unwrap().items.insert(
-                                    item_index,
-                                    ItemSlot {
-                                        item: item_id,
-                                        count: 1,
-                                        bar: None,
-                                    },
-                                );
-                            }
-                            NetworkMessageS2C::BlockAddItem(x, y, z, item_index, item_id) => {
-                                let block_pos = BlockPosition { x, y, z };
-                                if let Some(mut chunk) =
-                                    world.get_mut_chunk(block_pos.to_chunk_pos())
-                                {
-                                    if let Some(dynamic_block) =
-                                        chunk.dynamic_blocks.get_mut(&block_pos)
-                                    {
-                                        dynamic_block.items.insert(
-                                            item_index,
-                                            ItemSlot {
-                                                item: item_id,
-                                                count: 1,
-                                                bar: None,
-                                            },
-                                        );
-                                    }
+                            NetworkMessageS2C::EntityItem(entity_id, item_index, item_id) => {
+                                let items = &mut entities.get_mut(&entity_id).unwrap().items;
+                                if item_id == 0 {
+                                    items.remove(&item_index);
+                                } else {
+                                    items.insert(
+                                        item_index,
+                                        ItemSlot {
+                                            item: item_id,
+                                            count: 1,
+                                            bar: None,
+                                        },
+                                    );
                                 }
                             }
-                            NetworkMessageS2C::BlockRemoveItem(x, y, z, item_index) => {
+                            NetworkMessageS2C::BlockItem(x, y, z, item_index, item_id) => {
                                 let block_pos = BlockPosition { x, y, z };
                                 if let Some(mut chunk) =
                                     world.get_mut_chunk(block_pos.to_chunk_pos())
@@ -364,7 +349,20 @@ fn main() {
                                     if let Some(dynamic_block) =
                                         chunk.dynamic_blocks.get_mut(&block_pos)
                                     {
-                                        dynamic_block.items.remove(&item_index);
+                                        let items = &mut dynamic_block.items;
+
+                                        if item_id == 0 {
+                                            items.remove(&item_index);
+                                        } else {
+                                            items.insert(
+                                                item_index,
+                                                ItemSlot {
+                                                    item: item_id,
+                                                    count: 1,
+                                                    bar: None,
+                                                },
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -405,7 +403,7 @@ fn main() {
                                 camera.position.x = x;
                                 camera.position.y = y;
                                 camera.position.z = z;
-                                if !rotation.is_nan(){
+                                if !rotation.is_nan() {
                                     camera.yaw_deg = rotation;
                                 }
                                 received_first_teleport = true;
@@ -731,11 +729,11 @@ fn main() {
                     )
                     .unwrap();
             }
-            if received_first_teleport{
+            if received_first_teleport {
                 socket
                     .write_message(tungstenite::Message::Binary(
                         NetworkMessageC2S::PlayerPosition(
-                            camera.position.x,//todo: variable hitbox
+                            camera.position.x, //todo: variable hitbox
                             camera.position.y,
                             camera.position.z,
                             camera.is_shifting(),
@@ -765,7 +763,7 @@ fn main() {
                 projection_view_loc,
                 projection * camera.create_view_matrix(),
             );
-            let rendered_chunks = {
+            let mut rendered_chunks = {
                 world.render(
                     &chunk_shader,
                     (timer.ticks() as f32) / 1000f32,
@@ -857,6 +855,8 @@ fn main() {
                 ogl33::glEnable(ogl33::GL_DEPTH_TEST);
             }
             block_breaking_manager.render(&projection);
+            chunk_shader.use_program();
+            world.render_transparent(&chunk_shader, &mut rendered_chunks);
             sky_renderer.render(
                 ultraviolet::projection::perspective_gl(
                     90f32.to_radians(),
@@ -1195,6 +1195,7 @@ impl WorldEntityRenderer {
             projection.clone(),
         );
         unsafe {
+            ogl33::glDisable(ogl33::GL_CULL_FACE);
             ogl33::glBlendFunc(ogl33::GL_SRC_ALPHA, ogl33::GL_ONE_MINUS_SRC_ALPHA);
             ogl33::glEnable(ogl33::GL_BLEND);
             ogl33::glDrawArrays(ogl33::GL_TRIANGLES, 0, vertex_count);
