@@ -399,10 +399,10 @@ fn main() {
                                 camera.velocity = Vec3::new(0., 0., 0.);
                             }
                             NetworkMessageS2C::TeleportPlayer(x, y, z, rotation) => {
-                                println!("teleport {} {} {}", x, y, z);
-                                camera.position.x = x;
+                                println!("teleport {} {} {}", x, y, z);
+                                camera.position.x = x + 0.3;
                                 camera.position.y = y;
-                                camera.position.z = z;
+                                camera.position.z = z + 0.3;
                                 if !rotation.is_nan() {
                                     camera.yaw_deg = rotation;
                                 }
@@ -722,7 +722,7 @@ fn main() {
                     .borrow_mut()
                     .set_title(
                         format!(
-                            "BlockByte {:.1} {:.1} {:.1}",
+                            "BlockByte {:.1} {:.1} {:.1}",
                             camera.position.x, camera.position.y, camera.position.z
                         )
                         .as_str(),
@@ -733,9 +733,9 @@ fn main() {
                 socket
                     .write_message(tungstenite::Message::Binary(
                         NetworkMessageC2S::PlayerPosition(
-                            camera.position.x, //todo: variable hitbox
+                            camera.position.x - 0.3, //todo: variable hitbox
                             camera.position.y,
-                            camera.position.z,
+                            camera.position.z - 0.3,
                             camera.is_shifting(),
                             camera.yaw_deg,
                             camera.last_moved,
