@@ -607,7 +607,7 @@ fn main() {
                     window_id,
                     keycode,
                     scancode: _,
-                    keymod: _,
+                    keymod,
                     repeat,
                 } => {
                     if window_id == win_id {
@@ -648,7 +648,7 @@ fn main() {
                                 keys_held.insert(keycode);
                                 socket
                                     .write_message(tungstenite::Message::Binary(
-                                        NetworkMessageC2S::Keyboard(keycode as i32, true, repeat)
+                                        NetworkMessageC2S::Keyboard(keycode as i32, keymod.bits(), true, repeat)
                                             .to_data(),
                                     ))
                                     .unwrap();
@@ -661,7 +661,7 @@ fn main() {
                     window_id,
                     keycode,
                     scancode: _,
-                    keymod: _,
+                    keymod,
                     repeat,
                 } => {
                     if window_id == win_id {
@@ -670,7 +670,7 @@ fn main() {
                                 keys_held.remove(&keycode);
                                 socket
                                     .write_message(tungstenite::Message::Binary(
-                                        NetworkMessageC2S::Keyboard(keycode as i32, false, repeat)
+                                        NetworkMessageC2S::Keyboard(keycode as i32, keymod.bits(), false, repeat)
                                             .to_data(),
                                     ))
                                     .unwrap();

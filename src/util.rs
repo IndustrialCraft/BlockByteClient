@@ -286,7 +286,7 @@ pub enum NetworkMessageC2S {
     RightClickBlock(i32, i32, i32, Face, bool),
     PlayerPosition(f32, f32, f32, bool, f32, bool),
     MouseScroll(i32, i32),
-    Keyboard(i32, bool, bool),
+    Keyboard(i32, u16, bool, bool),
     GuiClick(String, MouseButton, bool),
     GuiClose,
     RequestBlockBreakTime(u32, BlockPosition),
@@ -335,9 +335,10 @@ impl NetworkMessageC2S {
                 data.write_be(*x).unwrap();
                 data.write_be(*y).unwrap();
             }
-            Self::Keyboard(key, down, repeat) => {
+            Self::Keyboard(key, key_mod, down, repeat) => {
                 data.write_be(4u8).unwrap();
                 data.write_be(*key).unwrap();
+                data.write_be(*key_mod).unwrap();
                 data.write_be(*down).unwrap();
                 data.write_be(*repeat).unwrap();
             }
