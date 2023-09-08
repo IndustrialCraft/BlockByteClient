@@ -813,35 +813,35 @@ impl<'a> ItemRenderer<'a> {
                                 *matrix
                                     * Vec4::new(
                                         position.x,
-                                        position.y,
-                                        position.z + (scale.y / 6. * 5.),
+                                        position.y + (scale.y / 6. * 5.),
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::UpLeft,
                                 *matrix
                                     * Vec4::new(
                                         position.x + middle_x,
-                                        position.y,
-                                        position.z + scale.y,
-                                        1.,
-                                    ),
-                                Corner::DownLeft,
-                                *matrix
-                                    * Vec4::new(
-                                        position.x + scale.x,
-                                        position.y,
-                                        position.z + (scale.y / 6. * 5.),
+                                        position.y + scale.y,
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::UpRight,
                                 *matrix
                                     * Vec4::new(
-                                        position.x + middle_x,
-                                        position.y,
-                                        position.z + middle_y,
+                                        position.x + scale.x,
+                                        position.y + (scale.y / 6. * 5.),
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::DownRight,
+                                *matrix
+                                    * Vec4::new(
+                                        position.x + middle_x,
+                                        position.y + middle_y,
+                                        position.z,
+                                        1.,
+                                    ),
+                                Corner::DownLeft,
                                 &CubeElementFace {
                                     u1: 0.,
                                     v1: 0.,
@@ -855,24 +855,24 @@ impl<'a> ItemRenderer<'a> {
                                 *matrix
                                     * Vec4::new(
                                         position.x + middle_x,
-                                        position.y,
-                                        position.z + middle_y,
+                                        position.y + middle_y,
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::UpLeft,
                                 *matrix
                                     * Vec4::new(
                                         position.x + scale.x,
-                                        position.y,
-                                        position.z + (scale.y * 5. / 6.),
+                                        position.y+ (scale.y * 5. / 6.),
+                                        position.z ,
                                         1.,
                                     ),
                                 Corner::UpRight,
                                 *matrix
                                     * Vec4::new(
                                         position.x + scale.x,
-                                        position.y,
-                                        position.z + (scale.y * 7.5 / 25.),
+                                        position.y + (scale.y * 7.5 / 25.),
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::DownRight,
@@ -892,16 +892,16 @@ impl<'a> ItemRenderer<'a> {
                                 *matrix
                                     * Vec4::new(
                                         position.x,
-                                        position.y,
-                                        position.z + (scale.y * 5. / 6.),
+                                        position.y + (scale.y * 5. / 6.),
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::UpLeft,
                                 *matrix
                                     * Vec4::new(
                                         position.x + middle_x,
-                                        position.y,
-                                        position.z + middle_y,
+                                        position.y + middle_y,
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::UpRight,
@@ -911,8 +911,8 @@ impl<'a> ItemRenderer<'a> {
                                 *matrix
                                     * Vec4::new(
                                         position.x,
-                                        position.y,
-                                        position.z + (scale.y * 7.5 / 25.),
+                                        position.y + (scale.y * 7.5 / 25.),
+                                        position.z,
                                         1.,
                                     ),
                                 Corner::DownLeft,
@@ -925,7 +925,7 @@ impl<'a> ItemRenderer<'a> {
                                 right,
                             );
                         }
-                        {
+                        /*{
                             Bone::create_face(
                                 vertex_consumer,
                                 *matrix
@@ -1052,7 +1052,7 @@ impl<'a> ItemRenderer<'a> {
                                 },
                                 right,
                             );
-                        }
+                        }*/
                         {}
                     }
                 }
